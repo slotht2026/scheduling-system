@@ -21,10 +21,12 @@ export default function GenerateButton({ year, month, onGenerated }: GenerateBut
     setResult(null);
 
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year, month }),
+        credentials: 'include',
       });
 
       const data = await res.json();

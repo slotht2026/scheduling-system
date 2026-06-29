@@ -35,6 +35,7 @@ export default function LeaveModal({ isOpen, onClose, year, month, onSuccess }: 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, staff_id: staffId, reason }),
+        credentials: 'include',
       });
 
       const data = await res.json();

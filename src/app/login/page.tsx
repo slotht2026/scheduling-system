@@ -31,7 +31,7 @@ export default function LoginPage() {
 
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
-      router.push('/');
+      window.location.href = '/';
     } catch {
       setError('网络错误，请重试');
     } finally {
