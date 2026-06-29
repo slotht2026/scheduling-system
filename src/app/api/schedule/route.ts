@@ -60,13 +60,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '需要管理员权限' }, { status: 403 });
     }
 
-    const { year, month } = await request.json();
+    const { year, month, staffIds } = await request.json();
     if (!year || !month) {
       return NextResponse.json({ error: '需要year和month参数' }, { status: 400 });
     }
 
     // Load staff and rules from DB
-    const STAFF = (await loadStaff()).filter(s => s.active);
+    let allStaff = (await loadStaff()).filter(s => s.active);
+    // If staffIds provided, filter to only selected staff
+    if (staffIds && Array.isArray(staffIds) && staffIds.length > 0) {
+      allStaff = allStaff.filter(s => staffIds.includes(s.id));
+    }
+    const STAFF = allStaff;
     const rules = await loadRules();
 
     // 节假日/补班日（与原型一致）

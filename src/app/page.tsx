@@ -216,7 +216,7 @@ export default function HomePage() {
             {user?.role === 'admin' && (
               <>
                 <button onClick={() => setShowLeaveModal(true)} className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 transition">🏥 添加请假</button>
-                <GenerateButton year={year} month={month} onGenerated={fetchData} />
+                <GenerateButton year={year} month={month} staff={staffList} onGenerated={fetchData} />
               </>
             )}
             {!user && (
