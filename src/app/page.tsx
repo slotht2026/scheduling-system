@@ -172,7 +172,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded bg-orange-400 inline-block"></span>
-                <span><b>午间备班</b> 08:00-15:00连续（7h，白班选1人，覆盖午休时段）</span>
+                <span><b>早午班</b> 08:00-15:00连续（7h，白班选1人，覆盖午休时段）</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded bg-blue-500 inline-block"></span>
@@ -182,7 +182,7 @@ export default function HomePage() {
                 <span className="w-3 h-3 rounded bg-purple-500 inline-block"></span>
                 <span><b>夜班</b> 01:00-08:00（7h）</span>
               </div>
-              <div className="text-green-700 mt-2 text-xs">白班≥3人（含1名leader）+ 午备1人 + 晚班1人 + 夜班1人</div>
+              <div className="text-green-700 mt-2 text-xs">白班≥3人 + 早午班1人 + 晚班1人 + 夜班1人</div>
             </div>
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">

@@ -11,7 +11,7 @@ export interface StaffMember {
 
 export const SHIFTS: Record<string, { name: string; time: string; hours: number }> = {
   day:     { name: '白班', time: '08:00-12:00, 15:00-18:00', hours: 7 },
-  noon:    { name: '午间备班', time: '08:00-15:00', hours: 7 },
+  noon:    { name: '早午班', time: '08:00-15:00', hours: 7 },
   evening: { name: '晚班', time: '18:00-01:00', hours: 7 },
   night:   { name: '夜班', time: '01:00-08:00', hours: 7 },
 };

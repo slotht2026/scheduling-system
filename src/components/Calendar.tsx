@@ -8,6 +8,8 @@ interface StaffMember {
   name: string;
   role: string;
   color: string;
+  isDirector?: boolean;
+  isLeader?: boolean;
 }
 
 interface ScheduleEntry {
@@ -36,7 +38,7 @@ interface CalendarProps {
 
 const SHIFT_LABELS: Record<string, string> = {
   day: '白班',
-  noon: '午备班',
+  noon: '早午班',
   evening: '晚班',
   night: '夜班',
 };
@@ -101,7 +103,13 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
 
   const getStaffName = (id: string) => staff.find(s => s.id === id)?.name || id;
   const getStaffColor = (id: string) => staff.find(s => s.id === id)?.color || '#666';
-  const getStaffRole = (id: string) => staff.find(s => s.id === id)?.role || '';
+  const getStaffTag = (id: string) => {
+    const s = staff.find(x => x.id === id);
+    if (!s) return '';
+    if (s.isDirector) return '主管';
+    if (s.isLeader) return '组长';
+    return '';
+  };
 
   const days: (number | null)[] = [];
   for (let i = 0; i < firstDayOfWeek; i++) days.push(null);
@@ -225,7 +233,8 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
                           <div className="flex flex-wrap gap-2">
                             {staffIds.map(id => (
                               <span key={id} className="px-2 py-1 rounded-full text-sm text-white" style={{ backgroundColor: getStaffColor(id) }}>
-                                {getStaffName(id)} <span className="text-white/70 text-xs">({getStaffRole(id)})</span>
+                                {getStaffName(id)}
+                                {getStaffTag(id) && <span className="text-white/70 text-xs ml-1">({getStaffTag(id)})</span>}
                               </span>
                             ))}
                           </div>
