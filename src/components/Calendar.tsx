@@ -162,6 +162,10 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
                     {SHIFT_ORDER.map(shift => {
                       const staffIds = daySchedule[shift];
                       if (!staffIds || staffIds.length === 0) return null;
+                      // 午班的人也出现在白班里，白班显示时排除午班人员
+                      const noonIds = daySchedule['noon'] || [];
+                      const displayIds = shift === 'day' ? staffIds.filter(id => !noonIds.includes(id)) : staffIds;
+                      if (displayIds.length === 0) return null;
                       const cls = shift === 'day' ? 'bg-green-100 text-green-800' :
                                   shift === 'noon' ? 'bg-orange-100 text-orange-800' :
                                   shift === 'evening' ? 'bg-blue-100 text-blue-800' :
@@ -169,7 +173,7 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
                       return (
                         <div key={shift} className={`text-[10px] leading-tight px-1 py-0.5 rounded ${cls}`}>
                           <span className="font-medium">{SHIFT_LABELS[shift]}:</span>
-                          {staffIds.map(id => (
+                          {displayIds.map(id => (
                             <span key={id} className="ml-0.5">{getStaffName(id)}</span>
                           ))}
                         </div>
@@ -218,6 +222,11 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
                     const shiftInfo = (shifts as Record<string, { time: string; hours: number }>)[shift];
                     if (!shiftInfo && staffIds.length === 0) return null;
 
+                    // 午班的人也出现在白班里，白班显示时排除午班人员
+                    const noonIds = daySchedule['noon'] || [];
+                    const displayIds = shift === 'day' ? staffIds.filter(id => !noonIds.includes(id)) : staffIds;
+                    if (displayIds.length === 0 && shift === 'day') return null;
+
                     const cls = shift === 'day' ? 'bg-green-50 border-green-200' :
                                 shift === 'noon' ? 'bg-orange-50 border-orange-200' :
                                 shift === 'evening' ? 'bg-blue-50 border-blue-200' :
@@ -229,9 +238,9 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
                           <span className="font-bold text-gray-700">{SHIFT_LABELS[shift]}</span>
                           {shiftInfo && <span className="text-xs text-gray-500">{shiftInfo.time} ({shiftInfo.hours}h)</span>}
                         </div>
-                        {staffIds.length > 0 ? (
+                        {displayIds.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
-                            {staffIds.map(id => (
+                            {displayIds.map(id => (
                               <span key={id} className="px-2 py-1 rounded-full text-sm text-white" style={{ backgroundColor: getStaffColor(id) }}>
                                 {getStaffName(id)}
                                 {getStaffTag(id) && <span className="text-white/70 text-xs ml-1">({getStaffTag(id)})</span>}
