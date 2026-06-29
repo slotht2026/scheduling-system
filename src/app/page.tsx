@@ -148,6 +148,82 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* Today & Tomorrow Quick View */}
+        {!loading && schedules.length > 0 && (() => {
+          const today = new Date();
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const fmt = (d: Date) => d.toISOString().split('T')[0];
+          const todayStr = fmt(today);
+          const tomorrowStr = fmt(tomorrow);
+
+          const SHIFT_LABELS: Record<string, string> = { day: '白班', noon: '早午班', evening: '晚班', night: '夜班' };
+          const SHIFT_COLORS: Record<string, string> = { day: '#4caf50', noon: '#ff9800', evening: '#2196f3', night: '#9c27b0' };
+          const SHIFT_TIMES: Record<string, string> = { day: '08:00-18:00', noon: '08:00-15:00', evening: '18:00-01:00', night: '01:00-08:00' };
+          const SHIFT_ORDER = ['day', 'noon', 'evening', 'night'];
+
+          const getName = (id: string) => staffList.find(s => s.id === id)?.name || id;
+          const getColor = (id: string) => staffList.find(s => s.id === id)?.color || '#666';
+
+          const renderDay = (dateStr: string, label: string) => {
+            const dayEntries = schedules.filter(e => e.date.split('T')[0] === dateStr);
+            if (dayEntries.length === 0) return null;
+
+            const byShift: Record<string, string[]> = {};
+            dayEntries.forEach(e => {
+              if (!byShift[e.shift]) byShift[e.shift] = [];
+              byShift[e.shift].push(e.staff_id);
+            });
+            // 午班的人不显示在白班
+            const noonIds = byShift['noon'] || [];
+
+            return (
+              <div key={dateStr} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex-1">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">{label === '今天' ? '📍' : '📅'}</span>
+                  <span className="font-bold text-gray-800">{label}</span>
+                  <span className="text-sm text-gray-500">{dateStr}</span>
+                </div>
+                <div className="space-y-2">
+                  {SHIFT_ORDER.map(shift => {
+                    const ids = byShift[shift];
+                    if (!ids || ids.length === 0) return null;
+                    const displayIds = shift === 'day' ? ids.filter(id => !noonIds.includes(id)) : ids;
+                    if (displayIds.length === 0) return null;
+                    return (
+                      <div key={shift} className="flex items-start gap-3">
+                        <div className="w-16 shrink-0">
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium text-white" style={{ backgroundColor: SHIFT_COLORS[shift] }}>{SHIFT_LABELS[shift]}</span>
+                          <div className="text-[10px] text-gray-400 mt-0.5">{SHIFT_TIMES[shift]}</div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {displayIds.map(id => (
+                            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm text-white" style={{ backgroundColor: getColor(id) }}>
+                              {getName(id)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          };
+
+          const todayCard = renderDay(todayStr, '今天');
+          const tomorrowCard = renderDay(tomorrowStr, '明天');
+
+          if (!todayCard && !tomorrowCard) return null;
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {todayCard || <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-4 flex items-center justify-center text-gray-400 text-sm">今天无排班数据</div>}
+              {tomorrowCard || <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-4 flex items-center justify-center text-gray-400 text-sm">明天无排班数据</div>}
+            </div>
+          );
+        })()}
+
         {/* Controls */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-4">
