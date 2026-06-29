@@ -1,17 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { STAFF } from '@/lib/staff';
+interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+}
 
 interface LeaveModalProps {
   isOpen: boolean;
   onClose: () => void;
   year: number;
   month: number;
+  staff: StaffMember[];
   onSuccess: () => void;
 }
 
-export default function LeaveModal({ isOpen, onClose, year, month, onSuccess }: LeaveModalProps) {
+export default function LeaveModal({ isOpen, onClose, year, month, staff, onSuccess }: LeaveModalProps) {
   const [date, setDate] = useState('');
   const [staffId, setStaffId] = useState('');
   const [reason, setReason] = useState('');
@@ -89,7 +94,7 @@ export default function LeaveModal({ isOpen, onClose, year, month, onSuccess }: 
               required
             >
               <option value="">请选择</option>
-              {STAFF.map((s) => (
+              {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}（{s.role}）
                 </option>

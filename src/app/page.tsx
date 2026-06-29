@@ -5,7 +5,16 @@ import Header from '@/components/Header';
 import Calendar from '@/components/Calendar';
 import GenerateButton from '@/components/GenerateButton';
 import LeaveModal from '@/components/LeaveModal';
-import { STAFF, SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+import { SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+
+interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  color: string;
+  isDirector: boolean;
+  isLeader: boolean;
+}
 
 interface User {
   id: number;
@@ -59,6 +68,7 @@ export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [leaves, setLeaves] = useState<LeaveEntry[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(true);
@@ -75,11 +85,18 @@ export default function HomePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/schedule/public?year=${year}&month=${month}`);
-      if (res.ok) {
-        const data = await res.json();
+      const [schedRes, staffRes] = await Promise.all([
+        fetch(`/api/schedule/public?year=${year}&month=${month}`),
+        fetch('/api/staff/public'),
+      ]);
+      if (schedRes.ok) {
+        const data = await schedRes.json();
         setSchedules(data.schedules || []);
         setLeaves(data.leaves || []);
+      }
+      if (staffRes.ok) {
+        const data = await staffRes.json();
+        setStaffList(data.staff || []);
       }
     } catch {
       console.error('Failed to fetch data');
@@ -110,7 +127,7 @@ export default function HomePage() {
   };
 
   // Calculate monthly stats
-  const stats = STAFF.map(s => {
+  const stats = staffList.map(s => {
     let hours = 0;
     let total = 0;
     const shiftCounts: Record<string, number> = { day: 0, noon: 0, evening: 0, night: 0 };
@@ -217,6 +234,7 @@ export default function HomePage() {
             month={month}
             schedules={schedules}
             leaves={leaves}
+            staff={staffList}
             isAdmin={user?.role === 'admin'}
             onDeleteLeave={user?.role === 'admin' ? async (date: string, staffId: string) => {
               if (!confirm('确定要删除这条请假记录吗？')) return;
@@ -248,7 +266,7 @@ export default function HomePage() {
 
       {/* Leave Modal */}
       {user?.role === 'admin' && (
-        <LeaveModal isOpen={showLeaveModal} onClose={() => setShowLeaveModal(false)} year={year} month={month} onSuccess={fetchData} />
+        <LeaveModal isOpen={showLeaveModal} onClose={() => setShowLeaveModal(false)} year={year} month={month} staff={staffList} onSuccess={fetchData} />
       )}
     </div>
   );

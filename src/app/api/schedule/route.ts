@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { STAFF, SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+import { loadStaff, loadRules, SHIFTS, WEEKEND_SHIFTS, type StaffMember } from '@/lib/staff';
 
-// Helper: get auth from cookie
 async function getAuth(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
   if (!token) return null;
@@ -65,17 +64,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '需要year和month参数' }, { status: 400 });
     }
 
-    const daysInMonth = new Date(year, month, 0).getDate();
+    // Load staff and rules from DB
+    const STAFF = (await loadStaff()).filter(s => s.active);
+    const rules = await loadRules();
 
-    // Get leaves for this month
+    // 节假日/补班日（与原型一致）
+    const HOLIDAYS_2026: Record<string, string> = {
+      '2026-01-01': '元旦', '2026-01-02': '元旦', '2026-01-03': '元旦',
+      '2026-02-17': '春节', '2026-02-18': '春节', '2026-02-19': '春节',
+      '2026-02-20': '春节', '2026-02-21': '春节', '2026-02-22': '春节', '2026-02-23': '春节',
+      '2026-04-05': '清明节', '2026-04-06': '清明节', '2026-04-07': '清明节',
+      '2026-05-01': '劳动节', '2026-05-02': '劳动节', '2026-05-03': '劳动节',
+      '2026-05-04': '劳动节', '2026-05-05': '劳动节',
+      '2026-05-31': '端午节', '2026-06-01': '端午节', '2026-06-02': '端午节',
+      '2026-10-01': '国庆节', '2026-10-02': '国庆节', '2026-10-03': '国庆节',
+      '2026-10-04': '国庆节', '2026-10-05': '国庆节', '2026-10-06': '国庆节', '2026-10-07': '国庆节',
+    };
+    const WORKDAYS_OVERRIDE: Record<string, boolean> = {
+      '2026-01-04': true, '2026-02-07': true, '2026-02-21': true,
+      '2026-04-26': true, '2026-05-09': true, '2026-06-28': true,
+      '2026-10-10': true,
+    };
+
+    function isRestDay(dateStr: string): boolean {
+      if (HOLIDAYS_2026[dateStr]) return true;
+      if (WORKDAYS_OVERRIDE[dateStr]) return false;
+      const d = new Date(dateStr + 'T00:00:00');
+      const day = d.getDay();
+      return day === 0 || day === 6;
+    }
+
+    const daysInMonth = new Date(year, month, 0).getDate();
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
+    // Get leaves for this month
     const leaves = await query(
       `SELECT date::text, staff_id FROM leaves WHERE date >= $1 AND date <= $2`,
       [startDate, endDateStr]
     );
-
     const leaveSet = new Set(leaves.map(l => `${l.date}_${l.staff_id}`));
 
     // Delete existing schedule for this month
@@ -84,15 +111,24 @@ export async function POST(request: NextRequest) {
       [startDate, endDateStr]
     );
 
-    // 排班算法参数
-    const MAX_MONTHLY_HOURS = 210;
-    const MIN_WEEKDAY_STAFF = 3;
+    // Parse rules
+    const MAX_MONTHLY_HOURS = parseInt(rules.max_monthly_hours || '210');
+    const MIN_WEEKDAY_STAFF = parseInt(rules.weekday_day_min || '3');
+    const MAX_CONSECUTIVE = parseInt(rules.max_consecutive_days || '5');
+    const REST_AFTER_NIGHT = parseInt(rules.rest_after_night || '1');
+    const REQUIRE_LEADER = rules.require_leader_dayshift !== 'false';
 
-    // 删除本月旧排班
-    await query(
-      `DELETE FROM schedules WHERE date >= $1 AND date <= $2`,
-      [startDate, endDateStr]
-    );
+    // Custom shift hours from rules
+    const customShifts = { ...SHIFTS };
+    if (rules.weekday_day_hours) customShifts.day = { ...customShifts.day, hours: parseInt(rules.weekday_day_hours) };
+    if (rules.weekday_noon_hours) customShifts.noon = { ...customShifts.noon, hours: parseInt(rules.weekday_noon_hours) };
+    if (rules.weekday_evening_hours) customShifts.evening = { ...customShifts.evening, hours: parseInt(rules.weekday_evening_hours) };
+    if (rules.weekday_night_hours) customShifts.night = { ...customShifts.night, hours: parseInt(rules.weekday_night_hours) };
+
+    const customWeekendShifts = { ...WEEKEND_SHIFTS };
+    if (rules.weekend_day_hours) customWeekendShifts.day = { ...customWeekendShifts.day, hours: parseInt(rules.weekend_day_hours) };
+    if (rules.weekend_evening_hours) customWeekendShifts.evening = { ...customWeekendShifts.evening, hours: parseInt(rules.weekend_evening_hours) };
+    if (rules.weekend_night_hours) customWeekendShifts.night = { ...customWeekendShifts.night, hours: parseInt(rules.weekend_night_hours) };
 
     // 每人工时统计
     const hoursMap: Record<string, number> = {};
@@ -109,11 +145,8 @@ export async function POST(request: NextRequest) {
     const scheduleEntries: { date: string; shift: string; staffId: string }[] = [];
 
     function canWork(id: string, day: number): boolean {
-      // 夜班后休息1天
-      if (day - lastNightMap[id] <= 1) return false;
-      // 连续工作不超过5天
-      if (consecutiveMap[id] >= 5) return false;
-      // 工时不超限
+      if (day - lastNightMap[id] <= REST_AFTER_NIGHT) return false;
+      if (consecutiveMap[id] >= MAX_CONSECUTIVE) return false;
       return true;
     }
 
@@ -124,19 +157,15 @@ export async function POST(request: NextRequest) {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayOfWeek = new Date(year, month - 1, day).getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isWeekend = isRestDay(dateStr);
 
-      // 可用人员（排除请假的）
       const available = STAFF.filter(s => !leaveSet.has(`${dateStr}_${s.id}`));
-      const dayAssigned: string[] = []; // 当天已排班的人
+      const dayAssigned: string[] = [];
 
       if (isWeekend) {
-        // 周末/假日：三班倒，每班1人
         const shifts = ['day', 'evening', 'night'] as const;
-        const hoursArr = [WEEKEND_SHIFTS.day.hours, WEEKEND_SHIFTS.evening.hours, WEEKEND_SHIFTS.night.hours];
+        const hoursArr = [customWeekendShifts.day.hours, customWeekendShifts.evening.hours, customWeekendShifts.night.hours];
 
-        // 按工时排序，最空闲的排白班（优先leader）
         const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
         const others = available.filter(s => !isLeaderStaff(s.id) && canWork(s.id, day));
 
@@ -151,22 +180,22 @@ export async function POST(request: NextRequest) {
           if (shifts[i] === 'night') lastNightMap[s.id] = day;
         }
       } else {
-        // 工作日
         const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
         const others = available.filter(s => !isLeaderStaff(s.id) && canWork(s.id, day));
 
-        // 白班：1个leader（错开） + 其他人按工时排序
+        // 白班
         const dayStaff: string[] = [];
         const sortedLeaders = leaders.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
-        if (sortedLeaders.length > 0) {
+
+        if (REQUIRE_LEADER && sortedLeaders.length > 0) {
           dayStaff.push(sortedLeaders[0].id);
         }
+
         const sortedOthers = others.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
         for (const s of sortedOthers) {
           if (dayStaff.length >= MIN_WEEKDAY_STAFF) break;
           if (!dayStaff.includes(s.id)) dayStaff.push(s.id);
         }
-        // 不够3人则从leader补充
         for (const s of sortedLeaders) {
           if (dayStaff.length >= MIN_WEEKDAY_STAFF) break;
           if (!dayStaff.includes(s.id)) dayStaff.push(s.id);
@@ -174,30 +203,30 @@ export async function POST(request: NextRequest) {
 
         for (const id of dayStaff) {
           scheduleEntries.push({ date: dateStr, shift: 'day', staffId: id });
-          hoursMap[id] += SHIFTS.day.hours;
+          hoursMap[id] += customShifts.day.hours;
           dayAssigned.push(id);
         }
 
-        // 午间备班：从白班人员中选1人（工时最少的），不另计工时
+        // 午间备班
         if (dayStaff.length > 1) {
           const noonCandidate = dayStaff.sort((a, b) => hoursMap[a] - hoursMap[b])[0];
           scheduleEntries.push({ date: dateStr, shift: 'noon', staffId: noonCandidate });
         }
 
-        // 晚班：从剩余人员中选工时最少的
+        // 晚班
         const remaining = available.filter(s => !dayAssigned.includes(s.id) && canWork(s.id, day))
           .sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
 
         if (remaining.length >= 1) {
           scheduleEntries.push({ date: dateStr, shift: 'evening', staffId: remaining[0].id });
-          hoursMap[remaining[0].id] += SHIFTS.evening.hours;
+          hoursMap[remaining[0].id] += customShifts.evening.hours;
           dayAssigned.push(remaining[0].id);
         }
 
-        // 夜班：从剩余人员中选工时最少的
+        // 夜班
         if (remaining.length >= 2) {
           scheduleEntries.push({ date: dateStr, shift: 'night', staffId: remaining[1].id });
-          hoursMap[remaining[1].id] += SHIFTS.night.hours;
+          hoursMap[remaining[1].id] += customShifts.night.hours;
           dayAssigned.push(remaining[1].id);
           lastNightMap[remaining[1].id] = day;
         }

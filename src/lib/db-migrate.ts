@@ -1,5 +1,4 @@
 import { Pool } from 'pg';
-import bcrypt from 'bcryptjs';
 
 const pool = new Pool({
   host: process.env.POSTGRES_HOST || '47.100.189.133',
@@ -9,50 +8,10 @@ const pool = new Pool({
   database: process.env.POSTGRES_DATABASE || 'scheduling-system',
 });
 
-async function init() {
+async function migrate() {
   const client = await pool.connect();
   try {
-    console.log('Connected to database. Creating tables...');
-
-    // Create users table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        name VARCHAR(50) NOT NULL,
-        role VARCHAR(20) NOT NULL DEFAULT 'viewer',
-        staff_id VARCHAR(10),
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-    console.log('✓ users table created');
-
-    // Create schedules table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS schedules (
-        id SERIAL PRIMARY KEY,
-        date DATE NOT NULL,
-        shift VARCHAR(20) NOT NULL,
-        staff_id VARCHAR(10) NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(date, shift, staff_id)
-      );
-    `);
-    console.log('✓ schedules table created');
-
-    // Create leaves table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS leaves (
-        id SERIAL PRIMARY KEY,
-        date DATE NOT NULL,
-        staff_id VARCHAR(10) NOT NULL,
-        reason VARCHAR(200),
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(date, staff_id)
-      );
-    `);
-    console.log('✓ leaves table created');
+    console.log('Connected to database. Running migrations...');
 
     // Create staff table
     await client.query(`
@@ -82,30 +41,7 @@ async function init() {
     `);
     console.log('✓ rules table created');
 
-    // Insert default users
-    const passwordHash = await bcrypt.hash('123456', 10);
-
-    const users = [
-      { username: 'dgm', name: '邓高明', role: 'admin', staff_id: 'dgm' },
-      { username: 'cnl', name: '陈能隆', role: 'viewer', staff_id: 'cht' },
-      { username: 'pht', name: '庞涵天', role: 'viewer', staff_id: 'pht' },
-      { username: 'zyf', name: '张永芳', role: 'viewer', staff_id: 'zyf' },
-      { username: 'nbs', name: '农帮善', role: 'viewer', staff_id: 'nbs' },
-      { username: 'wgn', name: '王国楠', role: 'viewer', staff_id: 'wgn' },
-      { username: 'nyj', name: '乃业隽', role: 'viewer', staff_id: 'nyj' },
-    ];
-
-    for (const user of users) {
-      await client.query(
-        `INSERT INTO users (username, password_hash, name, role, staff_id)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (username) DO NOTHING;`,
-        [user.username, passwordHash, user.name, user.role, user.staff_id]
-      );
-      console.log(`✓ User ${user.name} (${user.username}) inserted or already exists`);
-    }
-
-    // Seed staff
+    // Seed staff from existing hardcoded data
     const staffData = [
       { id: 'dgm', name: '邓高明', role: '技术主管', color: '#1a73e8', is_director: true, is_leader: false, sort_order: 1 },
       { id: 'cht', name: '陈能隆', role: '技术组长', color: '#e91e63', is_director: false, is_leader: true, sort_order: 2 },
@@ -123,8 +59,8 @@ async function init() {
          ON CONFLICT (id) DO NOTHING;`,
         [s.id, s.name, s.role, s.color, s.is_director, s.is_leader, s.sort_order]
       );
+      console.log(`✓ Staff ${s.name} inserted or already exists`);
     }
-    console.log('✓ Staff seeded');
 
     // Seed default rules
     const rulesData = [
@@ -150,11 +86,11 @@ async function init() {
         [r.key, r.value, r.label]
       );
     }
-    console.log('✓ Rules seeded');
+    console.log('✓ Default rules seeded');
 
-    console.log('\n✅ Database initialization complete!');
+    console.log('\n✅ Migration complete!');
   } catch (error) {
-    console.error('❌ Database initialization failed:', error);
+    console.error('❌ Migration failed:', error);
     process.exit(1);
   } finally {
     client.release();
@@ -162,4 +98,4 @@ async function init() {
   }
 }
 
-init();
+migrate();

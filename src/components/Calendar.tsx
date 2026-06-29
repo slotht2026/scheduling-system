@@ -1,7 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { STAFF, SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+import { SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+
+interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  color: string;
+}
 
 interface ScheduleEntry {
   id: number;
@@ -22,6 +29,7 @@ interface CalendarProps {
   month: number;
   schedules: ScheduleEntry[];
   leaves: LeaveEntry[];
+  staff: StaffMember[];
   isAdmin: boolean;
   onDeleteLeave?: (date: string, staffId: string) => void;
 }
@@ -64,7 +72,7 @@ function getRestInfo(dateStr: string): { isRest: boolean; label: string } {
   return { isRest: false, label: '' };
 }
 
-export default function Calendar({ year, month, schedules, leaves, isAdmin, onDeleteLeave }: CalendarProps) {
+export default function Calendar({ year, month, schedules, leaves, staff, isAdmin, onDeleteLeave }: CalendarProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -91,9 +99,9 @@ export default function Calendar({ year, month, schedules, leaves, isAdmin, onDe
     return map;
   }, [leaves]);
 
-  const getStaffName = (id: string) => STAFF.find(s => s.id === id)?.name || id;
-  const getStaffColor = (id: string) => STAFF.find(s => s.id === id)?.color || '#666';
-  const getStaffRole = (id: string) => STAFF.find(s => s.id === id)?.role || '';
+  const getStaffName = (id: string) => staff.find(s => s.id === id)?.name || id;
+  const getStaffColor = (id: string) => staff.find(s => s.id === id)?.color || '#666';
+  const getStaffRole = (id: string) => staff.find(s => s.id === id)?.role || '';
 
   const days: (number | null)[] = [];
   for (let i = 0; i < firstDayOfWeek; i++) days.push(null);

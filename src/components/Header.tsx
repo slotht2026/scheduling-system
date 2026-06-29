@@ -36,6 +36,9 @@ export default function Header({ user, onLogout }: HeaderProps) {
                     <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">管理员</span>
                   )}
                 </div>
+                {user.role === 'admin' && (
+                  <a href="/admin" className="text-sm text-blue-600 hover:text-blue-800 font-medium transition">⚙️ 管理后台</a>
+                )}
                 <button onClick={onLogout} className="text-sm text-gray-500 hover:text-red-600 transition">退出登录</button>
               </>
             ) : (

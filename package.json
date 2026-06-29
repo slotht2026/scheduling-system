@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:init": "tsx src/lib/db-init.ts"
+    "db:init": "tsx src/lib/db-init.ts",
+    "db:migrate": "tsx src/lib/db-migrate.ts"
   },
   "dependencies": {
     "next": "^15.3.0",
