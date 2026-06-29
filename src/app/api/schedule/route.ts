@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '需要管理员权限' }, { status: 403 });
     }
 
-    const { year, month, staffIds, requireLeader: requireLeaderParam } = await request.json();
+    const { year, month, staffIds, requireLeader: requireLeaderParam, restAfterNight: restAfterNightParam, maxConsecutive: maxConsecutiveParam } = await request.json();
     if (!year || !month) {
       return NextResponse.json({ error: '需要year和month参数' }, { status: 400 });
     }
@@ -120,9 +120,9 @@ export async function POST(request: NextRequest) {
     // Parse rules
     const MAX_MONTHLY_HOURS = parseInt(rules.max_monthly_hours || '210');
     const MIN_WEEKDAY_STAFF = parseInt(rules.weekday_day_min || '3');
-    const MAX_CONSECUTIVE = parseInt(rules.max_consecutive_days || '5');
-    const REST_AFTER_NIGHT = parseInt(rules.rest_after_night || '1');
     const REQUIRE_LEADER = requireLeaderParam !== undefined ? !!requireLeaderParam : rules.require_leader_dayshift !== 'false';
+    const REST_AFTER_NIGHT = restAfterNightParam !== undefined ? (restAfterNightParam ? parseInt(rules.rest_after_night || '1') : 0) : parseInt(rules.rest_after_night || '1');
+    const MAX_CONSECUTIVE = maxConsecutiveParam !== undefined ? (maxConsecutiveParam ? parseInt(rules.max_consecutive_days || '5') : 999) : parseInt(rules.max_consecutive_days || '5');
 
     // Custom shift hours from rules
     const customShifts = { ...SHIFTS };

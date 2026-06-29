@@ -24,6 +24,8 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
   const [showModal, setShowModal] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [requireLeader, setRequireLeader] = useState(false);
+  const [restAfterNight, setRestAfterNight] = useState(true);
+  const [maxConsecutive, setMaxConsecutive] = useState(true);
 
   // 默认全选
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
       const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, month, staffIds: selected, requireLeader }),
+        body: JSON.stringify({ year, month, staffIds: selected, requireLeader, restAfterNight, maxConsecutive }),
         credentials: 'include',
       });
 
@@ -113,7 +115,7 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
               <span className="text-xs text-gray-400">已选 {selected.length}/{staff.length} 人</span>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-3 p-2 bg-amber-50 rounded-lg border border-amber-200">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-2 p-2 bg-amber-50 rounded-lg border border-amber-200">
               <input
                 type="checkbox"
                 checked={requireLeader}
@@ -122,6 +124,27 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
               />
               <span className="font-medium">白班必须含1名Leader（组长/主管）</span>
             </label>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer p-2 bg-blue-50 rounded-lg border border-blue-200">
+                <input
+                  type="checkbox"
+                  checked={restAfterNight}
+                  onChange={e => setRestAfterNight(e.target.checked)}
+                  className="rounded"
+                />
+                <span>夜班后必须休息1天</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer p-2 bg-blue-50 rounded-lg border border-blue-200">
+                <input
+                  type="checkbox"
+                  checked={maxConsecutive}
+                  onChange={e => setMaxConsecutive(e.target.checked)}
+                  className="rounded"
+                />
+                <span>连续工作不超过5天</span>
+              </label>
+            </div>
 
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {staff.map(s => (
