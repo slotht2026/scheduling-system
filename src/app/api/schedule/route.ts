@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { loadStaff, loadRules, SHIFTS, WEEKEND_SHIFTS, type StaffMember } from '@/lib/staff';
+import { SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+import { loadStaff, loadRules } from '@/lib/staff-db';
 
 async function getAuth(request: NextRequest) {
   const token = request.cookies.get('token')?.value;

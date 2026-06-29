@@ -1,5 +1,3 @@
-import { query } from './db';
-
 export interface StaffMember {
   id: string;
   name: string;
@@ -25,7 +23,7 @@ export const WEEKEND_SHIFTS: Record<string, { time: string; hours: number }> = {
 };
 
 // Fallback hardcoded staff (used only if DB is unavailable)
-const FALLBACK_STAFF: StaffMember[] = [
+export const FALLBACK_STAFF: StaffMember[] = [
   { id: 'dgm', name: '邓高明', role: '技术主管', color: '#1a73e8', isDirector: true, isLeader: false, sortOrder: 1, active: true },
   { id: 'cht', name: '陈能隆', role: '技术组长', color: '#e91e63', isDirector: false, isLeader: true, sortOrder: 2, active: true },
   { id: 'pht', name: '庞涵天', role: '技术员', color: '#4caf50', isDirector: false, isLeader: false, sortOrder: 3, active: true },
@@ -34,44 +32,6 @@ const FALLBACK_STAFF: StaffMember[] = [
   { id: 'wgn', name: '王国楠', role: '技术员', color: '#00bcd4', isDirector: false, isLeader: false, sortOrder: 6, active: true },
   { id: 'nyj', name: '乃业隽', role: '技术员', color: '#795548', isDirector: false, isLeader: false, sortOrder: 7, active: true },
 ];
-
-// Load staff from database
-export async function loadStaff(): Promise<StaffMember[]> {
-  try {
-    const rows = await query(
-      `SELECT id, name, role, color, is_director, is_leader, sort_order, active
-       FROM staff ORDER BY sort_order`
-    );
-    if (rows.length === 0) return FALLBACK_STAFF;
-    return rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      role: r.role,
-      color: r.color,
-      isDirector: r.is_director,
-      isLeader: r.is_leader,
-      sortOrder: r.sort_order,
-      active: r.active,
-    }));
-  } catch {
-    return FALLBACK_STAFF;
-  }
-}
-
-// Load rules from database
-export async function loadRules(): Promise<Record<string, string>> {
-  try {
-    const rows = await query(`SELECT key, value FROM rules`);
-    if (rows.length === 0) return DEFAULT_RULES;
-    const rules: Record<string, string> = {};
-    for (const r of rows) {
-      rules[r.key] = r.value;
-    }
-    return rules;
-  } catch {
-    return DEFAULT_RULES;
-  }
-}
 
 export const DEFAULT_RULES: Record<string, string> = {
   weekday_day_min: '3',
