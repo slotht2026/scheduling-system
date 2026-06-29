@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能排班系统 - 医院IT硬件外包服务</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --primary: #1a73e8;
+  --primary-light: #e8f0fe;
+  --danger: #d93025;
+  --success: #1e8e3e;
+  --warning: #f9ab00;
+  --bg: #f8f9fa;
+  --card: #ffffff;
+  --border: #dadce0;
+  --text: #202124;
+  --text-secondary: #5f6368;
+  --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+.header { background: linear-gradient(135deg, #1a73e8, #0d47a1); color: white; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow); }
+.header h1 { font-size: 22px; font-weight: 600; }
+.header .subtitle { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+.header-actions { display: flex; gap: 10px; }
+.header-actions button { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+.header-actions button:hover { background: rgba(255,255,255,0.35); }
+
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--card); padding: 6px; border-radius: 10px; box-shadow: var(--shadow); }
+.tab { padding: 10px 20px; border: none; background: transparent; cursor: pointer; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text-secondary); transition: all 0.2s; }
+.tab.active { background: var(--primary); color: white; }
+.tab:hover:not(.active) { background: var(--primary-light); color: var(--primary); }
+
+.card { background: var(--card); border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: var(--shadow); }
+.card h2 { font-size: 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.card h3 { font-size: 15px; margin: 16px 0 10px; color: var(--text-secondary); }
+
+.calendar-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.calendar-nav button { background: var(--primary-light); color: var(--primary); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 18px; font-weight: 600; transition: all 0.2s; }
+.calendar-nav button:hover { background: var(--primary); color: white; }
+.calendar-nav .month-label { font-size: 20px; font-weight: 600; }
+
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.calendar-header { background: var(--primary); color: white; text-align: center; padding: 10px; font-weight: 600; font-size: 13px; border-radius: 6px 6px 0 0; }
+.calendar-header:first-child { border-radius: 6px 0 0 0; }
+.calendar-header:last-child { border-radius: 0 6px 0 0; }
+.calendar-day { background: var(--card); border: 1px solid var(--border); border-radius: 4px; min-height: 100px; padding: 6px; position: relative; transition: all 0.2s; cursor: pointer; }
+.calendar-day:hover { box-shadow: var(--shadow-lg); z-index: 1; }
+.calendar-day.empty { background: transparent; border: none; }
+.calendar-day.today { border-color: var(--primary); border-width: 2px; }
+.calendar-day.weekend { background: #fff8f0; }
+.calendar-day.holiday { background: #fef0f0; }
+.calendar-day .day-num { font-weight: 600; font-size: 13px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+.calendar-day .day-num .weekday { font-size: 11px; color: var(--text-secondary); }
+.calendar-day.weekend .day-num { color: var(--warning); }
+.calendar-day.holiday .day-num { color: var(--danger); }
+
+.shift-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; margin: 1px 0; display: flex; align-items: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shift-day { background: #e8f5e9; color: #2e7d32; }
+.shift-noon { background: #fff3e0; color: #e65100; }
+.shift-evening { background: #e3f2fd; color: #1565c0; }
+.shift-night { background: #f3e5f5; color: #7b1fa2; }
+.shift-oncall { background: #fce4ec; color: #c62828; }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--primary-light); border-radius: 8px; padding: 16px; text-align: center; }
+.stat-card .stat-num { font-size: 28px; font-weight: 700; color: var(--primary); }
+.stat-card .stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(26,115,232,0.1); }
+
+.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: #1557b0; }
+.btn-success { background: var(--success); color: white; }
+.btn-success:hover { background: #0d652d; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover { background: #a52019; }
+.btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+.btn-outline:hover { background: var(--primary-light); }
+
+.team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.team-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 12px; transition: all 0.2s; }
+.team-card:hover { box-shadow: var(--shadow); }
+.team-avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: white; }
+.team-info .team-name { font-weight: 600; font-size: 15px; }
+.team-info .team-role { font-size: 12px; color: var(--text-secondary); }
+.team-stats { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.team-stats span { display: flex; align-items: center; gap: 3px; }
+
+.rule-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg); border-radius: 8px; margin-bottom: 8px; }
+.rule-item .rule-icon { font-size: 20px; }
+.rule-item .rule-text { flex: 1; }
+.rule-item .rule-text .rule-title { font-weight: 600; font-size: 14px; }
+.rule-item .rule-text .rule-desc { font-size: 12px; color: var(--text-secondary); }
+
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.modal { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.modal h3 { margin-bottom: 16px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+.toast { position: fixed; top: 20px; right: 20px; background: var(--success); color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 2000; animation: slideIn 0.3s ease; box-shadow: var(--shadow-lg); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.person-select { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.person-chip { padding: 4px 10px; border-radius: 16px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s; user-select: none; }
+.person-chip.selected { background: var(--primary); color: white; border-color: var(--primary); }
+.person-chip:hover:not(.selected) { background: var(--primary-light); }
+
+.schedule-summary { margin-top: 16px; }
+.schedule-summary table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.schedule-summary th { background: var(--bg); padding: 8px; text-align: left; font-weight: 600; position: sticky; top: 0; }
+.schedule-summary td { padding: 8px; border-bottom: 1px solid var(--border); }
+.schedule-summary tr:hover { background: var(--primary-light); }
+
+.fairness-bar { height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+.fairness-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+
+@media (max-width: 768px) {
+  .header { flex-direction: column; gap: 10px; text-align: center; }
+  .calendar-day { min-height: 80px; }
+  .team-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>🏥 智能排班系统</h1>
+    <div class="subtitle">医院计算机硬件外包服务 · 7×24小时技术支持</div>
+  </div>
+  <div class="header-actions">
+    <button onclick="exportSchedule()">📋 导出排班表</button>
+    <button onclick="saveData()">💾 保存数据</button>
+    <button onclick="loadData()">📂 加载数据</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('calendar')">📅 排班日历</button>
+    <button class="tab" onclick="switchTab('team')">👥 团队管理</button>
+    <button class="tab" onclick="switchTab('rules')">⚙️ 排班规则</button>
+    <button class="tab" onclick="switchTab('stats')">📊 统计分析</button>
+  </div>
+
+  <!-- 排班日历 -->
+  <div id="tab-calendar" class="tab-content">
+    <div class="card">
+      <div class="calendar-nav">
+        <button onclick="changeMonth(-1)">◀</button>
+        <span class="month-label" id="monthLabel"></span>
+        <button onclick="changeMonth(1)">▶</button>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="autoSchedule()">🤖 自动生成排班</button>
+        <button class="btn btn-success" onclick="reassignLeave()">🔄 请假自动补班</button>
+        <button class="btn btn-outline" onclick="clearMonth()">🗑️ 清空本月</button>
+        <button class="btn btn-outline" onclick="goToday()">📌 回到今天</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="background:#e8f5e9;border-radius:8px;padding:12px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📅 工作日排班（周一至周五）</div>
+          <div style="font-size:13px;line-height:2;">
+            <span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:2px;margin-right:4px;"></span><b>白班</b> 08:00-12:00 + 15:00-18:00（7h，午休12:00-15:00）<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#ff9800;border-radius:2px;margin-right:4px;"></span><b>午备班</b> 08:00-15:00连续（7h，从白班选1人，覆盖午休时段）<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#2196f3;border-radius:2px;margin-right:4px;"></span><b>晚班</b> 18:00-01:00（7h）<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#9c27b0;border-radius:2px;margin-right:4px;"></span><b>夜班</b> 01:00-08:00（7h）<br>
+            <span style="color:var(--text-secondary);">白班≥3人（含1名leader）+ 午备1人 + 晚班1人 + 夜班1人</span>
+          </div>
+        </div>
+        <div style="background:#e3f2fd;border-radius:8px;padding:12px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">🗓️ 周末/节假日排班</div>
+          <div style="font-size:13px;line-height:2;">
+            <span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:2px;margin-right:4px;"></span><b>白班</b> 08:00-16:00（8h，1人）<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#2196f3;border-radius:2px;margin-right:4px;"></span><b>晚班</b> 16:00-00:00（8h，1人）<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#9c27b0;border-radius:2px;margin-right:4px;"></span><b>夜班</b> 00:00-08:00（8h，1人）<br>
+            <span style="color:var(--text-secondary);">门诊不开，每班1人，三班覆盖24h</span>
+          </div>
+        </div>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+  </div>
+
+  <!-- 团队管理 -->
+  <div id="tab-team" class="tab-content hidden">
+    <div class="card">
+      <h2>👥 团队成员</h2>
+      <div class="team-grid" id="teamGrid"></div>
+    </div>
+    <div class="card">
+      <h2>📊 工作量统计</h2>
+      <div id="workloadStats"></div>
+    </div>
+  </div>
+
+  <!-- 排班规则 -->
+  <div id="tab-rules" class="tab-content hidden">
+    <div class="card">
+      <h2>📋 排班约束（基于采购文件要求）</h2>
+      <div class="rule-item">
+        <div class="rule-icon">⏰</div>
+        <div class="rule-text">
+          <div class="rule-title">7×24小时技术支持</div>
+          <div class="rule-desc">至少安排1名技术人员值班，覆盖全天候</div>
+        </div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-icon">🍽️</div>
+        <div class="rule-text">
+          <div class="rule-title">工作日午间备班 08:00-15:00</div>
+          <div class="rule-desc">从白班人员中选1人连续值班08:00-15:00（无午休），覆盖12:00-15:00午休时段，15:00下班；其余白班人员分两段：08:00-12:00 + 15:00-18:00</div>
+        </div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-icon">🚨</div>
+        <div class="rule-text">
+          <div class="rule-title">紧急故障响应</div>
+          <div class="rule-desc">1分钟内响应，5分钟内到达现场</div>
+        </div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-icon">📅</div>
+        <div class="rule-text">
+          <div class="rule-title">周末及节假日值班</div>
+          <div class="rule-desc">至少安排1名常驻技术人员值班，处理早晚间临床科室报障</div>
+        </div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-icon">⚖️</div>
+        <div class="rule-text">
+          <div class="rule-title">劳动法工时约束</div>
+          <div class="rule-desc">白班7h(08:00-12:00, 15:00-18:00)/午间备班7h(08:00-15:00连续)/晚班7h(18:00-01:00)/夜班7h(01:00-08:00)，月工时上限210h，同一人一天最多一个班次</div>
+        </div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-icon">⭐</div>
+        <div class="rule-text">
+          <div class="rule-title">核心维护工程师</div>
+          <div class="rule-desc">陈能隆（技术组长）需具备技术带教与指导能力</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>⚙️ 自定义排班参数</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="form-group">
+          <label>工作日最少在岗人数</label>
+          <input type="number" id="ruleMinWeekday" value="3" min="1" max="7">
+        </div>
+        <div class="form-group">
+          <label>周末最少值班人数</label>
+          <input type="number" id="ruleMinWeekend" value="1" min="1" max="7">
+        </div>
+        <div class="form-group">
+          <label>连续工作最大天数</label>
+          <input type="number" id="ruleMaxConsecutive" value="5" min="1" max="14">
+        </div>
+        <div class="form-group">
+          <label>夜班后最少休息天数</label>
+          <input type="number" id="ruleNightRest" value="1" min="0" max="3">
+        </div>
+        <div class="form-group">
+          <label>月工时上限（小时）</label>
+          <input type="number" id="ruleMaxHours" value="210" min="160" max="250">
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">劳动法：标准174h + 加班上限36h = 210h</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveRules()" style="margin-top:12px;">💾 保存规则</button>
+    </div>
+  </div>
+
+  <!-- 统计分析 -->
+  <div id="tab-stats" class="tab-content hidden">
+    <div class="stats-grid" id="statsGrid"></div>
+    <div class="card">
+      <h2>📊 公平性分析</h2>
+      <div id="fairnessChart"></div>
+    </div>
+    <div class="card">
+      <h2>📅 月度排班汇总</h2>
+      <div class="schedule-summary" id="scheduleSummary"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal">
+    <h3 id="editModalTitle">编辑排班</h3>
+    <div id="editModalContent"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveModal()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 数据定义 ==========
+const STAFF = [
+  { id: 'dgm', name: '邓高明', role: '技术主管', color: '#1a73e8', isLeader: false, isDirector: true },
+  { id: 'cht', name: '陈能隆', role: '技术组长', color: '#e91e63', isLeader: true, isDirector: false },
+  { id: 'pht', name: '庞涵天', role: '技术员', color: '#4caf50', isLeader: false, isDirector: false },
+  { id: 'zyf', name: '张永芳', role: '技术员', color: '#ff9800', isLeader: false, isDirector: false },
+  { id: 'nbs', name: '农帮善', role: '技术员', color: '#9c27b0', isLeader: false, isDirector: false },
+  { id: 'wgn', name: '王国楠', role: '技术员', color: '#00bcd4', isLeader: false, isDirector: false },
+  { id: 'nyj', name: '乃业隽', role: '技术员', color: '#795548', isLeader: false, isDirector: false }
+];
+
+const SHIFTS = {
+  day:     { name: '白班', time: '08:00-12:00, 15:00-18:00', hours: 7, cls: 'shift-day', color: '#4caf50' },
+  noon:    { name: '午间备班', time: '08:00-15:00(连续)', hours: 7, cls: 'shift-noon', color: '#ff9800' },
+  evening: { name: '晚班', time: '18:00-01:00', hours: 7, cls: 'shift-evening', color: '#2196f3' },
+  night:   { name: '夜班', time: '01:00-08:00', hours: 7, cls: 'shift-night', color: '#9c27b0' },
+  oncall:  { name: '值班', time: '全天', hours: 7, cls: 'shift-oncall', color: '#e91e63' }
+};
+
+// 周末/假日班次时间（每班1人，连续覆盖）
+const WEEKEND_SHIFTS = {
+  day:     { time: '08:00-16:00' },
+  evening: { time: '16:00-00:00' },
+  night:   { time: '00:00-08:00' }
+};
+
+// 国家法定节假日（可扩展）
+const HOLIDAYS_2026 = {
+  '2026-01-01': '元旦', '2026-01-02': '元旦', '2026-01-03': '元旦',
+  '2026-02-17': '春节', '2026-02-18': '春节', '2026-02-19': '春节',
+  '2026-02-20': '春节', '2026-02-21': '春节', '2026-02-22': '春节', '2026-02-23': '春节',
+  '2026-04-05': '清明节', '2026-04-06': '清明节', '2026-04-07': '清明节',
+  '2026-05-01': '劳动节', '2026-05-02': '劳动节', '2026-05-03': '劳动节',
+  '2026-05-04': '劳动节', '2026-05-05': '劳动节',
+  '2026-05-31': '端午节', '2026-06-01': '端午节', '2026-06-02': '端午节',
+  '2026-10-01': '国庆节', '2026-10-02': '国庆节', '2026-10-03': '国庆节',
+  '2026-10-04': '国庆节', '2026-10-05': '国庆节', '2026-10-06': '国庆节', '2026-10-07': '国庆节'
+};
+
+// 补班日（周末但需上班）
+const WORKDAYS_OVERRIDE = {
+  '2026-01-04': true, '2026-02-07': true, '2026-02-21': true,
+  '2026-04-26': true, '2026-05-09': true, '2026-06-28': true,
+  '2026-10-10': true
+};
+
+// ========== 状态 ==========
+let currentYear, currentMonth;
+let scheduleData = {}; // { 'YYYY-MM-DD': { day: [...ids], noon: [...ids], evening: [...ids], night: [...ids], oncall: [...ids] } }
+let leaveData = {};   // { 'YYYY-MM-DD': ['staff_id1', 'staff_id2'] }
+let rules = { minWeekday: 3, minWeekend: 1, maxConsecutive: 5, nightRest: 1, maxMonthlyHours: 210 };
+let editingDate = null;
+
+// ========== 初始化 ==========
+function init() {
+  const today = new Date();
+  currentYear = today.getFullYear();
+  currentMonth = today.getMonth();
+  loadFromLocal();
+  render();
+}
+
+function render() {
+  renderCalendar();
+  renderTeam();
+  renderStats();
+  updateMonthLabel();
+}
+
+// ========== 日历渲染 ==========
+function updateMonthLabel() {
+  document.getElementById('monthLabel').textContent = `${currentYear}年${currentMonth + 1}月`;
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  renderCalendar();
+  updateMonthLabel();
+}
+
+function goToday() {
+  const today = new Date();
+  currentYear = today.getFullYear();
+  currentMonth = today.getMonth();
+  render();
+}
+
+function isWeekend(date) {
+  const d = date.getDay();
+  return d === 0 || d === 6;
+}
+
+function isHoliday(dateStr) {
+  return HOLIDAYS_2026[dateStr] || false;
+}
+
+function isWorkdayOverride(dateStr) {
+  return WORKDAYS_OVERRIDE[dateStr] || false;
+}
+
+function isRestDay(date) {
+  const dateStr = formatDate(date);
+  if (isHoliday(dateStr)) return true;
+  if (isWorkdayOverride(dateStr)) return false;
+  return isWeekend(date);
+}
+
+function formatDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function renderCalendar() {
+  const grid = document.getElementById('calendarGrid');
+  grid.innerHTML = '';
+
+  // Headers
+  WEEKDAYS.forEach(d => {
+    const h = document.createElement('div');
+    h.className = 'calendar-header';
+    h.textContent = `星期${d}`;
+    grid.appendChild(h);
+  });
+
+  const firstDay = new Date(currentYear, currentMonth, 1);
+  const lastDay = new Date(currentYear, currentMonth + 1, 0);
+  const startPad = firstDay.getDay();
+
+  // Padding
+  for (let i = 0; i < startPad; i++) {
+    const empty = document.createElement('div');
+    empty.className = 'calendar-day empty';
+    grid.appendChild(empty);
+  }
+
+  const todayStr = formatDate(new Date());
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const date = new Date(currentYear, currentMonth, d);
+    const dateStr = formatDate(date);
+    const dayEl = document.createElement('div');
+    let cls = 'calendar-day';
+    if (dateStr === todayStr) cls += ' today';
+    if (isHoliday(dateStr)) cls += ' holiday';
+    else if (isWeekend(date) && !isWorkdayOverride(dateStr)) cls += ' weekend';
+    dayEl.className = cls;
+    dayEl.onclick = () => openEditModal(dateStr);
+
+    const dayNum = document.createElement('div');
+    dayNum.className = 'day-num';
+    dayNum.innerHTML = `<span>${d}</span>`;
+    
+    if (isHoliday(dateStr)) {
+      dayNum.innerHTML += `<span style="font-size:10px;color:var(--danger)">${HOLIDAYS_2026[dateStr]}</span>`;
+    } else if (isWorkdayOverride(dateStr)) {
+      dayNum.innerHTML += `<span style="font-size:10px;color:var(--primary)">补班</span>`;
+    }
+    // 请假标记
+    const todayLeave = leaveData[dateStr] || [];
+    if (todayLeave.length > 0) {
+      const leaveNames = todayLeave.map(id => STAFF.find(s => s.id === id)?.name || id).join('、');
+      dayNum.innerHTML += `<span style="font-size:10px;color:var(--danger)" title="请假: ${leaveNames}">🚫${todayLeave.length}</span>`;
+    }
+    dayEl.appendChild(dayNum);
+
+    const daySchedule = scheduleData[dateStr];
+    if (daySchedule) {
+      Object.entries(daySchedule).forEach(([shift, ids]) => {
+        if (ids && ids.length > 0) {
+          const badge = document.createElement('div');
+          badge.className = `shift-badge ${SHIFTS[shift].cls}`;
+          const names = ids.map(id => STAFF.find(s => s.id === id)?.name || id).join('、');
+          const rest = isRestDay(date);
+          const shiftTime = (rest && WEEKEND_SHIFTS[shift]) ? WEEKEND_SHIFTS[shift].time : SHIFTS[shift].time;
+          badge.textContent = `${SHIFTS[shift].name}: ${names}`;
+          badge.title = `${SHIFTS[shift].name} ${shiftTime}\n${names}`;
+          dayEl.appendChild(badge);
+        }
+      });
+    }
+
+    grid.appendChild(dayEl);
+  }
+}
+
+// ========== 自动排班算法 ==========
+function autoSchedule() {
+  const year = currentYear;
+  const month = currentMonth;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const minWeekday = parseInt(document.getElementById('ruleMinWeekday')?.value || 3);
+  const minWeekend = parseInt(document.getElementById('ruleMinWeekend')?.value || 1);
+  const maxConsecutive = parseInt(document.getElementById('ruleMaxConsecutive')?.value || 5);
+  const nightRest = parseInt(document.getElementById('ruleNightRest')?.value || 1);
+  const maxMonthlyHours = parseInt(document.getElementById('ruleMaxHours')?.value || 210);
+
+  // 劳动法: 月标准工时174h, 加班上限36h, 合计210h
+  const STANDARD_HOURS = 174;
+
+  // 追踪每人本月工作统计 (按工时计算)
+  const stats = {};
+  STAFF.forEach(s => {
+    stats[s.id] = { day: 0, noon: 0, evening: 0, night: 0, oncall: 0, total: 0, hours: 0, consecutive: 0, lastNight: -99, workedDays: new Set() };
+  });
+
+  for (let d = 1; d <= lastDay; d++) {
+    const date = new Date(year, month, d);
+    const dateStr = formatDate(date);
+    const rest = isRestDay(date);
+
+    const schedule = { day: [], noon: [], evening: [], night: [], oncall: [] };
+
+    // 获取可用人员（排除工时将超限的）
+    function getAvailableWithHours() {
+      return STAFF.filter(s => {
+        if (dayNum - stats[s.id].lastNight <= nightRest && stats[s.id].lastNight > 0) return false;
+        if (stats[s.id].consecutive >= maxConsecutive) return false;
+        return true;
+      }).map(s => s.id);
+    }
+    const dayNum = d;
+
+    function getAvailable() {
+      const todayLeave = leaveData[formatDate(date)] || [];
+      return STAFF.filter(s => {
+        if (todayLeave.includes(s.id)) return false;
+        if (d - stats[s.id].lastNight <= nightRest && stats[s.id].lastNight > 0) return false;
+        if (stats[s.id].consecutive >= maxConsecutive) return false;
+        return true;
+      }).map(s => s.id);
+    }
+
+    // 检查工时不超限
+    function canAssign(id, shiftKey) {
+      const h = SHIFTS[shiftKey].hours;
+      if (stats[id].hours + h > maxMonthlyHours) return false;
+      // 同一天不能上两个班次
+      if (stats[id].workedDays.has(d)) return false;
+      return true;
+    }
+
+    // 选最空闲的人 (按总工时)
+    function pickByHours(pool, shiftKey) {
+      const eligible = pool.filter(id => canAssign(id, shiftKey));
+      if (eligible.length === 0) return null;
+      eligible.sort((a, b) => stats[a].hours - stats[b].hours || stats[a].total - stats[b].total);
+      return eligible[0];
+    }
+
+    if (rest) {
+      // 周末/假日：安排值班
+      const available = getAvailable();
+
+      // 周末/假日：三班倒，每班1人
+      // 白班
+      const dayPool = available.filter(id => canAssign(id, 'day'));
+      dayPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      if (dayPool.length > 0) schedule.day = [dayPool[0]];
+
+      // 晚班（从剩余人中选）
+      const allA1 = [...schedule.day];
+      const evPool = available.filter(id => !allA1.includes(id) && canAssign(id, 'evening'));
+      evPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      if (evPool.length > 0) schedule.evening = [evPool[0]];
+
+      // 夜班（从剩余人中选）
+      const allA2 = [...schedule.day, ...schedule.evening];
+      const nightPool = available.filter(id => !allA2.includes(id) && canAssign(id, 'night'));
+      nightPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      if (nightPool.length > 0) schedule.night = [nightPool[0]];
+
+    } else {
+      // 工作日
+      const available = getAvailable();
+      const leaders = available.filter(id => {
+        const s = STAFF.find(st => st.id === id);
+        return s && (s.isLeader || s.isDirector);
+      });
+      const others = available.filter(id => !leaders.includes(id));
+
+      // 白班：选1个leader（按工时轮换）+ 其余人按工时排序
+      const dayPicks = [];
+      // 从leader中选工时最低的1个（确保至少1个leader，且只选1个）
+      const leaderPool = leaders.filter(id => canAssign(id, 'day'));
+      leaderPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      if (leaderPool.length > 0) dayPicks.push(leaderPool[0]);
+
+      // 剩余名额从非leader中选
+      const dayPool = others.filter(id => canAssign(id, 'day'));
+      dayPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      for (const id of dayPool) {
+        if (dayPicks.length >= minWeekday) break;
+        if (!dayPicks.includes(id)) dayPicks.push(id);
+      }
+      schedule.day = dayPicks;
+
+      // 午间备班：从白班人员中选1人，08:00-15:00值班后提前走(总工时7h)
+      if (dayPicks.length > 1) {
+        const noonCandidates = dayPicks.filter(id => stats[id].hours + SHIFTS.noon.hours <= maxMonthlyHours);
+        noonCandidates.sort((a, b) => stats[a].hours - stats[b].hours);
+        if (noonCandidates.length > 0) schedule.noon = [noonCandidates[0]];
+      }
+
+      // 晚班：1人（从当天未排班的人中选）
+      const allAssigned = [...new Set([...schedule.day, ...schedule.noon])];
+      const eveningPool = available.filter(id => !allAssigned.includes(id) && canAssign(id, 'evening'));
+      eveningPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      if (eveningPool.length > 0) schedule.evening = [eveningPool[0]];
+
+      // 夜班：1人（从当天未排班的人中选）
+      const allAssigned2 = [...new Set([...schedule.day, ...schedule.noon, ...schedule.evening])];
+      const nightPool = available.filter(id => !allAssigned2.includes(id) && canAssign(id, 'night'));
+      nightPool.sort((a, b) => stats[a].hours - stats[b].hours);
+      if (nightPool.length > 0) schedule.night = [nightPool[0]];
+    }
+
+    // 更新统计
+    const allAssigned = Object.values(schedule).flat();
+    const noonIds = schedule.noon || [];
+    STAFF.forEach(s => {
+      if (allAssigned.includes(s.id)) {
+        stats[s.id].consecutive++;
+        stats[s.id].workedDays.add(d);
+        Object.entries(schedule).forEach(([shift, ids]) => {
+          if (ids.includes(s.id)) {
+            // 午间备班的人也在day列表里，只算午班工时(7h)，不算day工时
+            if (shift === 'day' && noonIds.includes(s.id)) return;
+            stats[s.id][shift]++;
+            stats[s.id].total++;
+            stats[s.id].hours += SHIFTS[shift].hours;
+            if (shift === 'night') stats[s.id].lastNight = d;
+          }
+        });
+      } else {
+        stats[s.id].consecutive = 0;
+      }
+    });
+
+    scheduleData[dateStr] = schedule;
+  }
+
+  saveToLocal();
+  renderCalendar();
+  renderStats();
+
+  // 汇总提示
+  const summary = STAFF.map(s => `${s.name}:${stats[s.id].hours}h`).join(', ');
+  showToast(`✅ 排班生成！月工时上限${maxMonthlyHours}h | ${summary}`);
+}
+
+function getAvailable(stats, dateStr, nightRest, maxConsecutive, dayNum) {
+  return STAFF.filter(s => {
+    if (dayNum - stats[s.id].lastNight <= nightRest && stats[s.id].lastNight > 0) return false;
+    if (stats[s.id].consecutive >= maxConsecutive) return false;
+    return true;
+  }).map(s => s.id);
+}
+
+function pickLeastBusy(pool, stats, shiftType) {
+  // 选择总工时最少的人
+  let minHours = Infinity;
+  let minTotal = Infinity;
+  let pick = pool[0];
+  pool.forEach(id => {
+    const hours = stats[id].hours || 0;
+    const total = stats[id].total || 0;
+    if (hours < minHours || (hours === minHours && total < minTotal)) {
+      minHours = hours;
+      minTotal = total;
+      pick = id;
+    }
+  });
+  return pick;
+}
+
+// ========== 编辑弹窗 ==========
+function openEditModal(dateStr) {
+  editingDate = dateStr;
+  const modal = document.getElementById('editModal');
+  const content = document.getElementById('editModalContent');
+  const title = document.getElementById('editModalTitle');
+  
+  const date = new Date(dateStr + 'T00:00:00');
+  const rest = isRestDay(date);
+  title.textContent = `编辑排班 - ${dateStr} (${rest ? (isHoliday(dateStr) || '周末') : '工作日'})`;
+
+  const current = scheduleData[dateStr] || { day: [], noon: [], evening: [], night: [], oncall: [] };
+
+  let html = '';
+
+  // 请假管理
+  const todayLeave = leaveData[dateStr] || [];
+  html += `
+    <div class="form-group">
+      <label>🚫 请假人员（点击切换）</label>
+      <div class="person-select" data-shift="leave">
+        ${STAFF.map(p => `
+          <span class="person-chip ${todayLeave.includes(p.id) ? 'selected' : ''}" 
+                data-id="${p.id}" 
+                onclick="togglePerson(this)"
+                style="border-color:${todayLeave.includes(p.id) ? 'var(--danger)' : p.color}">
+            ${p.name}
+          </span>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  const shiftsToShow = rest ? ['day', 'evening', 'night'] : ['day', 'noon', 'evening', 'night'];
+  
+  shiftsToShow.forEach(shift => {
+    const s = SHIFTS[shift];
+    html += `
+      <div class="form-group">
+        <label>${s.name} (${s.time})</label>
+        <div class="person-select" data-shift="${shift}">
+          ${STAFF.map(p => `
+            <span class="person-chip ${(current[shift] || []).includes(p.id) ? 'selected' : ''}" 
+                  data-id="${p.id}" 
+                  onclick="togglePerson(this)"
+                  style="border-color:${p.color}">
+              ${p.name}
+            </span>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  });
+
+  content.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+function togglePerson(el) {
+  el.classList.toggle('selected');
+}
+
+function saveModal() {
+  if (!editingDate) return;
+  const schedule = {};
+  const leaveIds = [];
+
+  document.querySelectorAll('.person-select').forEach(container => {
+    const shift = container.dataset.shift;
+    const selected = Array.from(container.querySelectorAll('.person-chip.selected'))
+      .map(el => el.dataset.id);
+    if (shift === 'leave') {
+      leaveIds.push(...selected);
+    } else {
+      schedule[shift] = selected;
+    }
+  });
+
+  // 保存请假数据
+  if (leaveIds.length > 0) {
+    leaveData[editingDate] = leaveIds;
+  } else {
+    delete leaveData[editingDate];
+  }
+
+  // 保留未显示的班次
+  const existing = scheduleData[editingDate] || {};
+  ['day', 'noon', 'evening', 'night', 'oncall'].forEach(shift => {
+    if (!(shift in schedule)) {
+      schedule[shift] = existing[shift] || [];
+    }
+  });
+
+  // 从班次中移除请假人员
+  Object.keys(schedule).forEach(shift => {
+    schedule[shift] = schedule[shift].filter(id => !leaveIds.includes(id));
+  });
+
+  scheduleData[editingDate] = schedule;
+  saveToLocal();
+  renderCalendar();
+  renderStats();
+  closeModal();
+  showToast('✅ 已保存');
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.add('hidden');
+  editingDate = null;
+}
+
+// ========== 团队管理 ==========
+function renderTeam() {
+  const grid = document.getElementById('teamGrid');
+  grid.innerHTML = STAFF.map(s => {
+    const monthStats = getMonthStats(s.id);
+    return `
+      <div class="team-card">
+        <div class="team-avatar" style="background:${s.color}">${s.name[0]}</div>
+        <div class="team-info">
+          <div class="team-name">${s.name}</div>
+          <div class="team-role">${s.role}</div>
+          <div class="team-stats">
+            <span>合计 ${monthStats.hours}h / ${monthStats.total}班</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function getMonthStats(staffId) {
+  const stats = { day: 0, noon: 0, evening: 0, night: 0, oncall: 0, total: 0, hours: 0 };
+  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  for (let d = 1; d <= lastDay; d++) {
+    const dateStr = formatDate(new Date(currentYear, currentMonth, d));
+    const dayData = scheduleData[dateStr];
+    if (dayData) {
+      const noonIds = dayData.noon || [];
+      Object.entries(dayData).forEach(([shift, ids]) => {
+        if (ids && ids.includes(staffId)) {
+          // 午间备班的人也在day列表里，只算午班不算day
+          if (shift === 'day' && noonIds.includes(staffId)) return;
+          stats[shift]++;
+          stats.total++;
+          stats.hours += (SHIFTS[shift]?.hours || 0);
+        }
+      });
+    }
+  }
+  return stats;
+}
+
+// ========== 统计分析 ==========
+function renderStats() {
+  const grid = document.getElementById('statsGrid');
+  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  
+  let totalShifts = 0;
+  let totalHours = 0;
+  let coveredDays = 0;
+  let uncoveredDays = 0;
+
+  for (let d = 1; d <= lastDay; d++) {
+    const dateStr = formatDate(new Date(currentYear, currentMonth, d));
+    const dayData = scheduleData[dateStr];
+    if (dayData) {
+      let dayTotal = 0;
+      Object.entries(dayData).forEach(([shift, ids]) => {
+        if (ids && ids.length > 0) {
+          totalShifts += ids.length;
+          totalHours += ids.length * (SHIFTS[shift]?.hours || 0);
+          dayTotal += ids.length;
+        }
+      });
+      if (dayTotal > 0) coveredDays++;
+      else uncoveredDays++;
+    } else {
+      uncoveredDays++;
+    }
+  }
+
+  const avgHours = STAFF.length > 0 ? (totalHours / STAFF.length).toFixed(0) : 0;
+
+  grid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-num">${lastDay}</div>
+      <div class="stat-label">本月天数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${coveredDays}</div>
+      <div class="stat-label">已排班天数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${uncoveredDays}</div>
+      <div class="stat-label">未排班天数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${totalHours}h</div>
+      <div class="stat-label">总工时（人均${avgHours}h）</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">${totalShifts}</div>
+      <div class="stat-label">总班次数</div>
+    </div>
+  `;
+
+  // 公平性分析
+  const fairnessEl = document.getElementById('fairnessChart');
+  const allStats = STAFF.map(s => ({ ...s, stats: getMonthStats(s.id) }));
+  const maxHours = Math.max(...allStats.map(s => s.stats.hours), 174);
+
+  fairnessEl.innerHTML = allStats.map(s => {
+    const pct = (s.stats.hours / maxHours * 100).toFixed(0);
+    const overLimit = s.stats.hours > 210;
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+          <span style="font-weight:600;">${s.name} (${s.role})</span>
+          <span style="${overLimit ? 'color:var(--danger);font-weight:700;' : ''}">${s.stats.hours}h / ${s.stats.total}班 ${overLimit ? '⚠️ 超限' : ''}</span>
+        </div>
+        <div class="fairness-bar">
+          <div class="fairness-fill" style="width:${Math.min(pct, 100)}%;background:${overLimit ? 'var(--danger)' : s.color}"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 月度汇总表
+  renderSummary();
+}
+
+function renderSummary() {
+  const el = document.getElementById('scheduleSummary');
+  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  
+  let html = '<table><thead><tr><th>日期</th><th>星期</th><th>白班</th><th>午班</th><th>晚班</th><th>夜班</th><th>值班</th></tr></thead><tbody>';
+  
+  for (let d = 1; d <= lastDay; d++) {
+    const date = new Date(currentYear, currentMonth, d);
+    const dateStr = formatDate(date);
+    const dayData = scheduleData[dateStr];
+    const rest = isRestDay(date);
+    const holiday = isHoliday(dateStr);
+    
+    const getNames = (shift) => {
+      if (!dayData || !dayData[shift] || dayData[shift].length === 0) return '-';
+      return dayData[shift].map(id => STAFF.find(s => s.id === id)?.name || id).join('、');
+    };
+
+    html += `<tr style="${rest ? 'background:#fff8f0' : ''}">
+      <td>${d}日</td>
+      <td>${WEEKDAYS[date.getDay()]}${holiday ? ` <span style="color:var(--danger)">(${holiday})</span>` : ''}</td>
+      <td>${getNames('day')}</td>
+      <td>${getNames('noon')}</td>
+      <td>${getNames('evening')}</td>
+      <td>${getNames('night')}</td>
+      <td>${getNames('oncall')}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// ========== 导出功能 ==========
+function exportSchedule() {
+  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  let csv = '\uFEFF日期,星期,类型,白班,午班,晚班,夜班,值班\n';
+
+  for (let d = 1; d <= lastDay; d++) {
+    const date = new Date(currentYear, currentMonth, d);
+    const dateStr = formatDate(date);
+    const dayData = scheduleData[dateStr];
+    const rest = isRestDay(date);
+    const holiday = isHoliday(dateStr);
+
+    const getNames = (shift) => {
+      if (!dayData || !dayData[shift] || dayData[shift].length === 0) return '';
+      return dayData[shift].map(id => STAFF.find(s => s.id === id)?.name || id).join('、');
+    };
+
+    csv += `${dateStr},${WEEKDAYS[date.getDay()]},${holiday || (rest ? '休息日' : '工作日')},${getNames('day')},${getNames('noon')},${getNames('evening')},${getNames('night')},${getNames('oncall')}\n`;
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `排班表_${currentYear}年${currentMonth + 1}月.csv`;
+  link.click();
+  showToast('📋 排班表已导出为CSV文件');
+}
+
+// ========== 数据持久化 ==========
+function saveToLocal() {
+  localStorage.setItem('schedule_data', JSON.stringify(scheduleData));
+  localStorage.setItem('leave_data', JSON.stringify(leaveData));
+  localStorage.setItem('schedule_rules', JSON.stringify(rules));
+  localStorage.setItem('schedule_year', currentYear);
+  localStorage.setItem('schedule_month', currentMonth);
+}
+
+function loadFromLocal() {
+  const data = localStorage.getItem('schedule_data');
+  if (data) scheduleData = JSON.parse(data);
+  const lv = localStorage.getItem('leave_data');
+  if (lv) leaveData = JSON.parse(lv);
+  const r = localStorage.getItem('schedule_rules');
+  if (r) {
+    rules = JSON.parse(r);
+    if (!rules.maxMonthlyHours) rules.maxMonthlyHours = 210;
+    setTimeout(() => {
+      const el = document.getElementById('ruleMinWeekday');
+      if (el) el.value = rules.minWeekday;
+      const el2 = document.getElementById('ruleMinWeekend');
+      if (el2) el2.value = rules.minWeekend;
+      const el3 = document.getElementById('ruleMaxConsecutive');
+      if (el3) el3.value = rules.maxConsecutive;
+      const el4 = document.getElementById('ruleNightRest');
+      if (el4) el4.value = rules.nightRest;
+      const el5 = document.getElementById('ruleMaxHours');
+      if (el5) el5.value = rules.maxMonthlyHours;
+    }, 0);
+  }
+}
+
+function saveData() {
+  const data = {
+    scheduleData,
+    leaveData,
+    rules,
+    staff: STAFF,
+    exportDate: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `排班数据备份_${formatDate(new Date())}.json`;
+  link.click();
+  showToast('💾 数据已导出');
+}
+
+function loadData() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.scheduleData) scheduleData = data.scheduleData;
+        if (data.leaveData) leaveData = data.leaveData;
+        if (data.rules) rules = data.rules;
+        saveToLocal();
+        render();
+        showToast('📂 数据已加载');
+      } catch (err) {
+        showToast('❌ 文件格式错误');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function saveRules() {
+  rules.minWeekday = parseInt(document.getElementById('ruleMinWeekday').value);
+  rules.minWeekend = parseInt(document.getElementById('ruleMinWeekend').value);
+  rules.maxConsecutive = parseInt(document.getElementById('ruleMaxConsecutive').value);
+  rules.nightRest = parseInt(document.getElementById('ruleNightRest').value);
+  rules.maxMonthlyHours = parseInt(document.getElementById('ruleMaxHours').value);
+  saveToLocal();
+  showToast('✅ 规则已保存');
+}
+
+function clearMonth() {
+  if (!confirm(`确定清空 ${currentYear}年${currentMonth + 1}月 的所有排班数据？`)) return;
+  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  for (let d = 1; d <= lastDay; d++) {
+    const dateStr = formatDate(new Date(currentYear, currentMonth, d));
+    delete scheduleData[dateStr];
+  }
+  saveToLocal();
+  renderCalendar();
+  renderStats();
+  showToast('🗑️ 已清空本月排班');
+}
+
+function reassignLeave() {
+  // 扫描本月所有排班，把请假人员的班次自动替换给其他人
+  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const maxMonthlyHours = parseInt(document.getElementById('ruleMaxHours')?.value || 210);
+  let fixed = 0;
+
+  // 先统计每人当前工时
+  const monthStats = {};
+  STAFF.forEach(s => { monthStats[s.id] = { hours: 0 }; });
+  for (let d = 1; d <= lastDay; d++) {
+    const dateStr = formatDate(new Date(currentYear, currentMonth, d));
+    const dayData = scheduleData[dateStr];
+    if (!dayData) continue;
+    const noonIds = dayData.noon || [];
+    Object.entries(dayData).forEach(([shift, ids]) => {
+      if (!ids) return;
+      ids.forEach(id => {
+        if (shift === 'day' && noonIds.includes(id)) return;
+        monthStats[id].hours += (SHIFTS[shift]?.hours || 0);
+      });
+    });
+  }
+
+  for (let d = 1; d <= lastDay; d++) {
+    const dateStr = formatDate(new Date(currentYear, currentMonth, d));
+    const dayData = scheduleData[dateStr];
+    const todayLeave = leaveData[dateStr] || [];
+    if (!dayData || todayLeave.length === 0) continue;
+
+    const rest = isRestDay(new Date(currentYear, currentMonth, d));
+    const available = STAFF.map(s => s.id).filter(id => !todayLeave.includes(id));
+
+    // 遍历每个班次，替换请假人员
+    Object.keys(dayData).forEach(shift => {
+      if (!dayData[shift]) return;
+      const leaveInShift = dayData[shift].filter(id => todayLeave.includes(id));
+      if (leaveInShift.length === 0) return;
+
+      // 找到不在当天任何班次、且工时最少的可用人员
+      const allAssigned = Object.values(dayData).flat();
+      const candidates = available.filter(id =>
+        !allAssigned.includes(id) &&
+        monthStats[id].hours + (SHIFTS[shift]?.hours || 0) <= maxMonthlyHours
+      );
+      candidates.sort((a, b) => monthStats[a].hours - monthStats[b].hours);
+
+      leaveInShift.forEach(leaveId => {
+        const idx = dayData[shift].indexOf(leaveId);
+        if (idx !== -1 && candidates.length > 0) {
+          const replacement = candidates.shift();
+          dayData[shift][idx] = replacement;
+          monthStats[replacement].hours += (SHIFTS[shift]?.hours || 0);
+          fixed++;
+        } else if (idx !== -1) {
+          // 没人可替，移除
+          dayData[shift].splice(idx, 1);
+          fixed++;
+        }
+      });
+    });
+  }
+
+  saveToLocal();
+  renderCalendar();
+  renderStats();
+  showToast(fixed > 0 ? `✅ 已自动调整 ${fixed} 个班次` : '✅ 当前无需调整');
+}
+
+// ========== UI工具 ==========
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.remove('hidden');
+  event.target.classList.add('active');
+  if (name === 'stats') renderStats();
+  if (name === 'team') renderTeam();
+}
+
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2500);
+}
+
+// 点击弹窗外部关闭
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// 启动
+init();
+</script>
+</body>
+</html>
