@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '需要管理员权限' }, { status: 403 });
     }
 
-    const { year, month, staffIds } = await request.json();
+    const { year, month, staffIds, requireLeader: requireLeaderParam } = await request.json();
     if (!year || !month) {
       return NextResponse.json({ error: '需要year和month参数' }, { status: 400 });
     }
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     const MIN_WEEKDAY_STAFF = parseInt(rules.weekday_day_min || '3');
     const MAX_CONSECUTIVE = parseInt(rules.max_consecutive_days || '5');
     const REST_AFTER_NIGHT = parseInt(rules.rest_after_night || '1');
-    const REQUIRE_LEADER = rules.require_leader_dayshift !== 'false';
+    const REQUIRE_LEADER = requireLeaderParam !== undefined ? !!requireLeaderParam : rules.require_leader_dayshift !== 'false';
 
     // Custom shift hours from rules
     const customShifts = { ...SHIFTS };

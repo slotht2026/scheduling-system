@@ -23,6 +23,7 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
   const [result, setResult] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [requireLeader, setRequireLeader] = useState(false);
 
   // 默认全选
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
       const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, month, staffIds: selected }),
+        body: JSON.stringify({ year, month, staffIds: selected, requireLeader }),
         credentials: 'include',
       });
 
@@ -111,6 +112,16 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
               </label>
               <span className="text-xs text-gray-400">已选 {selected.length}/{staff.length} 人</span>
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-3 p-2 bg-amber-50 rounded-lg border border-amber-200">
+              <input
+                type="checkbox"
+                checked={requireLeader}
+                onChange={e => setRequireLeader(e.target.checked)}
+                className="rounded"
+              />
+              <span className="font-medium">白班必须含1名Leader（组长/主管）</span>
+            </label>
 
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {staff.map(s => (
