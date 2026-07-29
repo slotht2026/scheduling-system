@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import Calendar from '@/components/Calendar';
 import GenerateButton from '@/components/GenerateButton';
 import LeaveModal from '@/components/LeaveModal';
+import { SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
 
 interface StaffMember {
   id: string;
@@ -37,6 +38,32 @@ interface LeaveEntry {
   reason: string;
 }
 
+const HOLIDAYS_2026: Record<string, string> = {
+  '2026-01-01': '元旦', '2026-01-02': '元旦', '2026-01-03': '元旦',
+  '2026-02-17': '春节', '2026-02-18': '春节', '2026-02-19': '春节',
+  '2026-02-20': '春节', '2026-02-21': '春节', '2026-02-22': '春节', '2026-02-23': '春节',
+  '2026-04-05': '清明节', '2026-04-06': '清明节', '2026-04-07': '清明节',
+  '2026-05-01': '劳动节', '2026-05-02': '劳动节', '2026-05-03': '劳动节',
+  '2026-05-04': '劳动节', '2026-05-05': '劳动节',
+  '2026-05-31': '端午节', '2026-06-01': '端午节', '2026-06-02': '端午节',
+  '2026-10-01': '国庆节', '2026-10-02': '国庆节', '2026-10-03': '国庆节',
+  '2026-10-04': '国庆节', '2026-10-05': '国庆节', '2026-10-06': '国庆节', '2026-10-07': '国庆节',
+};
+
+const WORKDAYS_OVERRIDE: Record<string, boolean> = {
+  '2026-01-04': true, '2026-02-07': true, '2026-02-21': true,
+  '2026-04-26': true, '2026-05-09': true, '2026-06-28': true,
+  '2026-10-10': true,
+};
+
+function isRestDay(dateStr: string): boolean {
+  if (HOLIDAYS_2026[dateStr]) return true;
+  if (WORKDAYS_OVERRIDE[dateStr]) return false;
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
+
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
@@ -58,15 +85,54 @@ export default function HomePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [schedRes, staffRes] = await Promise.all([
-        fetch(`/api/schedule/public?year=${year}&month=${month}`),
-        fetch('/api/staff/public'),
-      ]);
-      if (schedRes.ok) {
-        const data = await schedRes.json();
-        setSchedules(data.schedules || []);
-        setLeaves(data.leaves || []);
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayMonth = today.getMonth() + 1;
+      const todayYear = today.getFullYear();
+      const tomorrowMonth = tomorrow.getMonth() + 1;
+      const tomorrowYear = tomorrow.getFullYear();
+
+      const monthsToFetch = new Set<string>();
+      monthsToFetch.add(`${year}-${month}`);
+      monthsToFetch.add(`${todayYear}-${todayMonth}`);
+      monthsToFetch.add(`${tomorrowYear}-${tomorrowMonth}`);
+
+      const schedRequests = Array.from(monthsToFetch).map(m => {
+        const [y, mo] = m.split('-');
+        return fetch(`/api/schedule/public?year=${y}&month=${mo}`);
+      });
+
+      const schedResponses = await Promise.all([...schedRequests, fetch('/api/staff/public')]);
+      const staffRes = schedResponses.pop()!;
+
+      let allSchedules: ScheduleEntry[] = [];
+      let allLeaves: LeaveEntry[] = [];
+      for (const res of schedResponses) {
+        if (res.ok) {
+          const data = await res.json();
+          allSchedules = allSchedules.concat(data.schedules || []);
+          allLeaves = allLeaves.concat(data.leaves || []);
+        }
       }
+
+      const seenSched = new Set<string>();
+      const uniqueSchedules = allSchedules.filter(e => {
+        const key = `${e.date}-${e.shift}-${e.staff_id}`;
+        if (seenSched.has(key)) return false;
+        seenSched.add(key);
+        return true;
+      });
+      const seenLeave = new Set<string>();
+      const uniqueLeaves = allLeaves.filter(e => {
+        const key = `${e.date}-${e.staff_id}`;
+        if (seenLeave.has(key)) return false;
+        seenLeave.add(key);
+        return true;
+      });
+
+      setSchedules(uniqueSchedules);
+      setLeaves(uniqueLeaves);
       if (staffRes.ok) {
         const data = await staffRes.json();
         setStaffList(data.staff || []);
@@ -98,6 +164,34 @@ export default function HomePage() {
     document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     setUser(null);
   };
+
+  // 本月工时统计（仅管理员可见）
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+  const monthSchedules = schedules.filter(e => e.date.startsWith(monthPrefix));
+  const stats = staffList.map(s => {
+    let hours = 0;
+    let total = 0;
+    const shiftCounts: Record<string, number> = { day: 0, noon: 0, evening: 0, night: 0 };
+    monthSchedules.forEach(e => {
+      if (e.staff_id === s.id) {
+        const dateStr = e.date.split('T')[0];
+        const rest = isRestDay(dateStr);
+        const shifts = rest ? WEEKEND_SHIFTS : SHIFTS;
+        if (shifts[e.shift]) {
+          if (e.shift !== 'noon') {
+            hours += shifts[e.shift].hours;
+          }
+          total++;
+          shiftCounts[e.shift]++;
+        }
+      }
+    });
+    const noonDays = monthSchedules.filter(e => e.staff_id === s.id && e.shift === 'noon').map(e => e.date.split('T')[0]);
+    hours -= noonDays.length * (SHIFTS.day?.hours || 7);
+    hours += noonDays.length * (SHIFTS.noon?.hours || 7);
+
+    return { ...s, hours, total, day: shiftCounts.day, noon: shiftCounts.noon, evening: shiftCounts.evening, night: shiftCounts.night };
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -261,6 +355,27 @@ export default function HomePage() {
               fetchData();
             } : undefined}
           />
+        )}
+
+        {/* Monthly Stats - 管理员可见 */}
+        {user?.role === 'admin' && !loading && stats.length > 0 && (
+          <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">📊 本月工时统计</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {stats.map(s => (
+                <div key={s.id} className="text-center p-3 rounded-lg" style={{ backgroundColor: s.color + '15' }}>
+                  <div className="font-bold text-sm" style={{ color: s.color }}>{s.name}</div>
+                  <div className="text-2xl font-bold text-gray-800 mt-1">{s.hours}h</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    白{s.day} 午{s.noon} 晚{s.evening} 夜{s.night}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-gray-500 text-right">
+              月工时上限：210h（标准174h + 加班36h）
+            </div>
+          </div>
         )}
 
 

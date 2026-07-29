@@ -26,6 +26,7 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
   const [requireLeader, setRequireLeader] = useState(false);
   const [restAfterNight, setRestAfterNight] = useState(true);
   const [maxConsecutive, setMaxConsecutive] = useState(true);
+  const [minDayStaff, setMinDayStaff] = useState(3);
 
   // 默认全选
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
       const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, month, staffIds: selected, requireLeader, restAfterNight, maxConsecutive }),
+        body: JSON.stringify({ year, month, staffIds: selected, requireLeader, restAfterNight, maxConsecutive, minDayStaff }),
         credentials: 'include',
       });
 
@@ -145,6 +146,19 @@ export default function GenerateButton({ year, month, staff, onGenerated }: Gene
                 <span>连续工作不超过5天</span>
               </label>
             </div>
+
+            <label className="flex items-center justify-between text-sm text-gray-700 mb-3 p-2 bg-green-50 rounded-lg border border-green-200">
+              <span className="font-medium">工作日白班最少人数</span>
+              <select
+                value={minDayStaff}
+                onChange={e => setMinDayStaff(Number(e.target.value))}
+                className="border border-green-300 rounded px-2 py-1 text-sm bg-white"
+              >
+                <option value={2}>≥2人</option>
+                <option value={3}>≥3人</option>
+                <option value={4}>≥4人</option>
+              </select>
+            </label>
 
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {staff.map(s => (

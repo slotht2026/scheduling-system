@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '需要管理员权限' }, { status: 403 });
     }
 
-    const { year, month, staffIds, requireLeader: requireLeaderParam, restAfterNight: restAfterNightParam, maxConsecutive: maxConsecutiveParam } = await request.json();
+    const { year, month, staffIds, requireLeader: requireLeaderParam, restAfterNight: restAfterNightParam, maxConsecutive: maxConsecutiveParam, minDayStaff: minDayStaffParam } = await request.json();
     if (!year || !month) {
       return NextResponse.json({ error: '需要year和month参数' }, { status: 400 });
     }
@@ -72,6 +72,14 @@ export async function POST(request: NextRequest) {
       allStaff = allStaff.filter(s => staffIds.includes(s.id));
     }
     const STAFF = allStaff;
+
+    // 即使主管未参与排班，也要加载出来作为夜班补位流动岗
+    let directorFloater: typeof STAFF[number] | null = null;
+    if (!STAFF.some(s => s.isDirector)) {
+      const allStaffFull = (await loadStaff()).filter(s => s.active);
+      directorFloater = allStaffFull.find(s => s.isDirector) || null;
+    }
+
     const rules = await loadRules();
 
     // 节假日/补班日（与原型一致）
@@ -119,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     // Parse rules
     const MAX_MONTHLY_HOURS = parseInt(rules.max_monthly_hours || '210');
-    const MIN_WEEKDAY_STAFF = parseInt(rules.weekday_day_min || '3');
+    const MIN_WEEKDAY_STAFF = minDayStaffParam !== undefined ? minDayStaffParam : parseInt(rules.weekday_day_min || '3');
     const REQUIRE_LEADER = requireLeaderParam !== undefined ? !!requireLeaderParam : rules.require_leader_dayshift !== 'false';
     const REST_AFTER_NIGHT = restAfterNightParam !== undefined ? (restAfterNightParam ? parseInt(rules.rest_after_night || '1') : 0) : parseInt(rules.rest_after_night || '1');
     const MAX_CONSECUTIVE = maxConsecutiveParam !== undefined ? (maxConsecutiveParam ? parseInt(rules.max_consecutive_days || '5') : 999) : parseInt(rules.max_consecutive_days || '5');
@@ -248,6 +256,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 补位：夜班未安排的用主管作为流动岗填上
+    const director = STAFF.find(s => s.isDirector) || directorFloater;
+    if (director) {
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const hasNight = scheduleEntries.some(e => e.date === dateStr && e.shift === 'night');
+        if (!hasNight) {
+          scheduleEntries.push({ date: dateStr, shift: 'night', staffId: director.id });
+          hoursMap[director.id] = (hoursMap[director.id] || 0) + customShifts.night.hours;
+          lastNightMap[director.id] = day;
+        }
+      }
+    }
+
     // 批量插入排班
     for (const entry of scheduleEntries) {
       await query(
@@ -258,6 +280,9 @@ export async function POST(request: NextRequest) {
     }
 
     const summary = STAFF.map(s => ({ name: s.name, hours: hoursMap[s.id] }));
+    if (directorFloater && hoursMap[directorFloater.id]) {
+      summary.push({ name: directorFloater.name, hours: hoursMap[directorFloater.id] });
+    }
 
     return NextResponse.json({
       message: '排班生成成功',

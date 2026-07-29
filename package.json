@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run copy-static",
+    "copy-static": "node -e \"const fs=require('fs'),path=require('path');const s='.next/static',d='.next/standalone/.next/static';if(fs.existsSync(s)){fs.mkdirSync(path.dirname(d),{recursive:true});fs.cpSync(s,d,{recursive:true,force:true});console.log('✓ Copied .next/static to standalone/.next/static')}\"",
     "start": "next start",
     "db:init": "tsx src/lib/db-init.ts",
     "db:migrate": "tsx src/lib/db-migrate.ts"
