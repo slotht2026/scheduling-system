@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+import { buildShiftConfig, isOvernight } from '@/lib/staff';
 import { loadStaff, loadRules } from '@/lib/staff-db';
 
 async function getAuth(request: NextRequest) {
@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
       [startDate, endDateStr]
     );
 
-    return NextResponse.json({ schedules, leaves, year, month });
+    const shiftConfig = buildShiftConfig(await loadRules());
+    return NextResponse.json({ schedules, leaves, year, month, shiftConfig });
   } catch (error) {
     console.error('Schedule GET error:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
@@ -132,17 +133,11 @@ export async function POST(request: NextRequest) {
     const REST_AFTER_NIGHT = restAfterNightParam !== undefined ? (restAfterNightParam ? parseInt(rules.rest_after_night || '1') : 0) : parseInt(rules.rest_after_night || '1');
     const MAX_CONSECUTIVE = maxConsecutiveParam !== undefined ? (maxConsecutiveParam ? parseInt(rules.max_consecutive_days || '5') : 999) : parseInt(rules.max_consecutive_days || '5');
 
-    // Custom shift hours from rules
-    const customShifts = { ...SHIFTS };
-    if (rules.weekday_day_hours) customShifts.day = { ...customShifts.day, hours: parseInt(rules.weekday_day_hours) };
-    if (rules.weekday_noon_hours) customShifts.noon = { ...customShifts.noon, hours: parseInt(rules.weekday_noon_hours) };
-    if (rules.weekday_evening_hours) customShifts.evening = { ...customShifts.evening, hours: parseInt(rules.weekday_evening_hours) };
-    if (rules.weekday_night_hours) customShifts.night = { ...customShifts.night, hours: parseInt(rules.weekday_night_hours) };
-
-    const customWeekendShifts = { ...WEEKEND_SHIFTS };
-    if (rules.weekend_day_hours) customWeekendShifts.day = { ...customWeekendShifts.day, hours: parseInt(rules.weekend_day_hours) };
-    if (rules.weekend_evening_hours) customWeekendShifts.evening = { ...customWeekendShifts.evening, hours: parseInt(rules.weekend_evening_hours) };
-    if (rules.weekend_night_hours) customWeekendShifts.night = { ...customWeekendShifts.night, hours: parseInt(rules.weekend_night_hours) };
+    // 生效班次配置（含自动跨天合并逻辑）
+    const { SHIFTS: customShifts, WEEKEND_SHIFTS: customWeekendShifts, mergeEveningNight: MERGE_EVENING_NIGHT } = buildShiftConfig(rules);
+    // 按工作日/周末分别判断晚班是否跨天（自动合并夜班）
+    const WD_MERGE = isOvernight(customShifts.evening.time);
+    const WE_MERGE = isOvernight(customWeekendShifts.evening.time);
 
     // 每人工时统计
     const hoursMap: Record<string, number> = {};
@@ -177,8 +172,10 @@ export async function POST(request: NextRequest) {
       const dayAssigned: string[] = [];
 
       if (isWeekend) {
-        const shifts = ['day', 'evening', 'night'] as const;
-        const hoursArr = [customWeekendShifts.day.hours, customWeekendShifts.evening.hours, customWeekendShifts.night.hours];
+        const shifts = WE_MERGE ? ['day', 'evening'] : ['day', 'evening', 'night'];
+        const hoursArr = WE_MERGE
+          ? [customWeekendShifts.day.hours, customWeekendShifts.evening.hours]
+          : [customWeekendShifts.day.hours, customWeekendShifts.evening.hours, customWeekendShifts.night.hours];
 
         const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
         const others = available.filter(s => !isLeaderStaff(s.id) && canWork(s.id, day));
@@ -186,12 +183,14 @@ export async function POST(request: NextRequest) {
         const sorted = [...leaders.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]),
                         ...others.sort((a, b) => hoursMap[a.id] - hoursMap[b.id])];
 
-        for (let i = 0; i < Math.min(3, sorted.length); i++) {
+        const limit = WE_MERGE ? 2 : 3;
+        for (let i = 0; i < Math.min(limit, sorted.length); i++) {
           const s = sorted[i];
           scheduleEntries.push({ date: dateStr, shift: shifts[i], staffId: s.id });
           hoursMap[s.id] += hoursArr[i];
           dayAssigned.push(s.id);
-          if (shifts[i] === 'night') lastNightMap[s.id] = day;
+          // 合并（跨天）模式下 evening 即覆盖通宵，按夜班处理休息
+          if (shifts[i] === 'night' || (WE_MERGE && shifts[i] === 'evening')) lastNightMap[s.id] = day;
         }
       } else {
         const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
@@ -221,10 +220,13 @@ export async function POST(request: NextRequest) {
           dayAssigned.push(id);
         }
 
-        // 午间备班
+        // 白加午（从白班3人中选1人全天在岗）
         if (dayStaff.length > 1) {
           const noonCandidate = dayStaff.sort((a, b) => hoursMap[a] - hoursMap[b])[0];
           scheduleEntries.push({ date: dateStr, shift: 'noon', staffId: noonCandidate });
+          // 白加午按 noon 工时(10h)计算，而非普通白班工时(7h)
+          hoursMap[noonCandidate] -= customShifts.day.hours;
+          hoursMap[noonCandidate] += customShifts.noon.hours;
         }
 
         // 晚班
@@ -235,10 +237,12 @@ export async function POST(request: NextRequest) {
           scheduleEntries.push({ date: dateStr, shift: 'evening', staffId: remaining[0].id });
           hoursMap[remaining[0].id] += customShifts.evening.hours;
           dayAssigned.push(remaining[0].id);
+          // 跨天合并模式下晚班即覆盖通宵，按夜班处理休息
+          if (WD_MERGE) lastNightMap[remaining[0].id] = day;
         }
 
-        // 夜班
-        if (remaining.length >= 2) {
+        // 夜班（仅在不跨天合并时排）
+        if (!WD_MERGE && remaining.length >= 2) {
           scheduleEntries.push({ date: dateStr, shift: 'night', staffId: remaining[1].id });
           hoursMap[remaining[1].id] += customShifts.night.hours;
           dayAssigned.push(remaining[1].id);
@@ -256,11 +260,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 补位：夜班未安排的用主管作为流动岗填上
+    // 补位：夜班未安排的用主管作为流动岗填上（跨天合并模式下晚班已覆盖通宵，无需补夜班）
     const director = STAFF.find(s => s.isDirector) || directorFloater;
     if (director) {
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayMerge = isRestDay(dateStr) ? WE_MERGE : WD_MERGE;
+        if (dayMerge) continue; // 合并模式下晚班已覆盖通宵
         const hasNight = scheduleEntries.some(e => e.date === dateStr && e.shift === 'night');
         if (!hasNight) {
           scheduleEntries.push({ date: dateStr, shift: 'night', staffId: director.id });
@@ -288,6 +294,7 @@ export async function POST(request: NextRequest) {
       message: '排班生成成功',
       hoursSummary: summary,
       totalEntries: scheduleEntries.length,
+      shiftConfig: { SHIFTS: customShifts, WEEKEND_SHIFTS: customWeekendShifts, mergeEveningNight: MERGE_EVENING_NIGHT },
     });
   } catch (error) {
     console.error('Schedule POST error:', error);

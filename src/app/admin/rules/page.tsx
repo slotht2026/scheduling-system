@@ -9,6 +9,21 @@ interface Rule {
   label: string;
 }
 
+// 班次配置定义：每个班次对应一条 time 规则和一条 hours 规则
+const SHIFT_CONFIGS = [
+  { group: '工作日', shifts: [
+    { label: '白班', timeKey: 'weekday_day_time', hoursKey: 'weekday_day_hours', placeholder: '08:00-12:00, 15:00-18:00' },
+    { label: '白加午', timeKey: 'weekday_noon_time', hoursKey: 'weekday_noon_hours', placeholder: '08:00-18:00' },
+    { label: '晚班', timeKey: 'weekday_evening_time', hoursKey: 'weekday_evening_hours', placeholder: '18:00-01:00' },
+    { label: '夜班', timeKey: 'weekday_night_time', hoursKey: 'weekday_night_hours', placeholder: '01:00-08:00' },
+  ]},
+  { group: '周末/节假日', shifts: [
+    { label: '白班', timeKey: 'weekend_day_time', hoursKey: 'weekend_day_hours', placeholder: '08:00-16:00' },
+    { label: '晚班', timeKey: 'weekend_evening_time', hoursKey: 'weekend_evening_hours', placeholder: '16:00-00:00' },
+    { label: '夜班', timeKey: 'weekend_night_time', hoursKey: 'weekend_night_hours', placeholder: '00:00-08:00' },
+  ]},
+];
+
 export default function RulesPage() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,9 +75,15 @@ export default function RulesPage() {
     }
   };
 
-  // Group rules by category
-  const hourRules = rules.filter(r => r.key.includes('hours'));
-  const limitRules = rules.filter(r => !r.key.includes('hours'));
+  // 查找规则值的辅助函数
+  const findRule = (key: string): string => {
+    const r = rules.find(x => x.key === key);
+    return r?.value || '';
+  };
+
+  // 排除班次相关规则后剩余的约束规则（merge_evening_night 已废弃，不再展示）
+  const shiftKeys = new Set(SHIFT_CONFIGS.flatMap(g => g.shifts.flatMap(s => [s.timeKey, s.hoursKey])));
+  const limitRules = rules.filter(r => !shiftKeys.has(r.key) && r.key !== 'merge_evening_night');
 
   if (loading) {
     return <div className="text-center py-12 text-gray-500">加载中...</div>;
@@ -89,31 +110,50 @@ export default function RulesPage() {
         </div>
       )}
 
-      {/* Hours config */}
+      {/* 班次时段与工时配置 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">⏰ 班次工时配置</h3>
-        <p className="text-sm text-gray-500 mb-4">设置每个班次的工作时长（小时）</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {hourRules.map(rule => (
-            <div key={rule.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <label className="text-sm text-gray-700">{rule.label || rule.key}</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={rule.value}
-                  onChange={e => updateValue(rule.key, e.target.value)}
-                  className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-center text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  min="1"
-                  max="24"
-                />
-                <span className="text-sm text-gray-500">h</span>
-              </div>
+        <h3 className="text-lg font-bold text-gray-800 mb-2">⏰ 班次时段与工时配置</h3>
+        <p className="text-sm text-gray-500 mb-5">设置每个班次的时间段和工作时长（小时）。修改后重新生成排班即可生效。</p>
+
+        {SHIFT_CONFIGS.map(group => (
+          <div key={group.group} className="mb-6 last:mb-0">
+            <h4 className="text-sm font-bold text-gray-600 mb-3 pb-1 border-b border-gray-100">{group.group}</h4>
+            <div className="space-y-3">
+              {group.shifts.map(shift => (
+                <div key={shift.timeKey} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="sm:w-20 shrink-0">
+                    <span className="text-sm font-medium text-gray-700">{shift.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-1">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">时段</label>
+                    <input
+                      type="text"
+                      value={findRule(shift.timeKey)}
+                      onChange={e => updateValue(shift.timeKey, e.target.value)}
+                      placeholder={shift.placeholder}
+                      className="flex-1 min-w-[160px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 sm:w-32">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">工时</label>
+                    <input
+                      type="number"
+                      value={findRule(shift.hoursKey)}
+                      onChange={e => updateValue(shift.hoursKey, e.target.value)}
+                      className="w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-center text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      min="1"
+                      max="24"
+                    />
+                    <span className="text-xs text-gray-500">h</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
-      {/* Other rules */}
+      {/* 排班约束规则 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h3 className="text-lg font-bold text-gray-800 mb-4">📋 排班约束规则</h3>
         <p className="text-sm text-gray-500 mb-4">调整排班算法的核心参数</p>
@@ -152,8 +192,8 @@ export default function RulesPage() {
         <h4 className="font-bold text-blue-800 text-sm mb-2">💡 说明</h4>
         <ul className="text-sm text-blue-700 space-y-1">
           <li>• 修改规则后需点击"保存规则"生效</li>
-          <li>• 新规则将在下次生成排班时应用</li>
-          <li>• 已生成的排班不受影响</li>
+          <li>• 新规则将在下次生成排班时应用，已生成的排班不受影响</li>
+          <li>• 时段格式示例：08:00-12:00, 15:00-18:00（多段用逗号分隔）</li>
           <li>• 月工时上限建议设为 174（标准）+ 36（加班）= 210h</li>
         </ul>
       </div>

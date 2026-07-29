@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { loadRules } from '@/lib/staff-db';
+import { buildShiftConfig } from '@/lib/staff';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +29,9 @@ export async function GET(request: NextRequest) {
       [startDate, endDateStr]
     );
 
-    return NextResponse.json({ schedules, leaves, year, month });
+    const shiftConfig = buildShiftConfig(await loadRules());
+
+    return NextResponse.json({ schedules, leaves, year, month, shiftConfig });
   } catch (error) {
     console.error('Public schedule GET error:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });

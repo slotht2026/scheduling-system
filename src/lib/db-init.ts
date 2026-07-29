@@ -101,12 +101,19 @@ async function init() {
     // Seed default rules
     const rulesData = [
       { key: 'weekday_day_min', value: '3', label: '工作日白班最少人数' },
+      { key: 'weekday_day_time', value: '08:00-12:00, 15:00-18:00', label: '工作日白班时段' },
       { key: 'weekday_day_hours', value: '7', label: '工作日白班工时' },
-      { key: 'weekday_noon_hours', value: '7', label: '工作日午间备班工时' },
+      { key: 'weekday_noon_time', value: '08:00-18:00', label: '工作日白加午时段' },
+      { key: 'weekday_noon_hours', value: '10', label: '工作日白加午工时' },
+      { key: 'weekday_evening_time', value: '18:00-01:00', label: '工作日晚班时段' },
       { key: 'weekday_evening_hours', value: '7', label: '工作日晚班工时' },
+      { key: 'weekday_night_time', value: '01:00-08:00', label: '工作日夜班时段' },
       { key: 'weekday_night_hours', value: '7', label: '工作日夜班工时' },
+      { key: 'weekend_day_time', value: '08:00-16:00', label: '周末白班时段' },
       { key: 'weekend_day_hours', value: '8', label: '周末白班工时' },
+      { key: 'weekend_evening_time', value: '16:00-00:00', label: '周末晚班时段' },
       { key: 'weekend_evening_hours', value: '8', label: '周末晚班工时' },
+      { key: 'weekend_night_time', value: '00:00-08:00', label: '周末夜班时段' },
       { key: 'weekend_night_hours', value: '8', label: '周末夜班工时' },
       { key: 'max_monthly_hours', value: '210', label: '月工时上限' },
       { key: 'max_consecutive_days', value: '5', label: '最大连续工作天数' },
@@ -118,7 +125,7 @@ async function init() {
       await client.query(
         `INSERT INTO rules (key, value, label)
          VALUES ($1, $2, $3)
-         ON CONFLICT (key) DO NOTHING;`,
+         ON CONFLICT (key) DO UPDATE SET label = EXCLUDED.label, value = EXCLUDED.value;`,
         [r.key, r.value, r.label]
       );
     }

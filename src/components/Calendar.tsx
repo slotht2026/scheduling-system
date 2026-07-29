@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { SHIFTS, WEEKEND_SHIFTS } from '@/lib/staff';
+import { SHIFTS, WEEKEND_SHIFTS, type ShiftConfig, isOvernight } from '@/lib/staff';
 
 interface StaffMember {
   id: string;
@@ -33,12 +33,13 @@ interface CalendarProps {
   leaves: LeaveEntry[];
   staff: StaffMember[];
   isAdmin: boolean;
+  shiftConfig?: ShiftConfig | null;
   onDeleteLeave?: (date: string, staffId: string) => void;
 }
 
 const SHIFT_LABELS: Record<string, string> = {
   day: '白班',
-  noon: '早午班',
+  noon: '白加午',
   evening: '晚班',
   night: '夜班',
 };
@@ -74,7 +75,9 @@ function getRestInfo(dateStr: string): { isRest: boolean; label: string } {
   return { isRest: false, label: '' };
 }
 
-export default function Calendar({ year, month, schedules, leaves, staff, isAdmin, onDeleteLeave }: CalendarProps) {
+export default function Calendar({ year, month, schedules, leaves, staff, isAdmin, shiftConfig, onDeleteLeave }: CalendarProps) {
+  const effShifts = (rest: boolean) =>
+    rest ? (shiftConfig?.WEEKEND_SHIFTS || WEEKEND_SHIFTS) : (shiftConfig?.SHIFTS || SHIFTS);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -213,11 +216,14 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
               const daySchedule = scheduleMap[selectedDate] || {};
               const dayLeaves = leaveMap[selectedDate] || [];
               const { isRest } = getRestInfo(selectedDate);
-              const shifts = isRest ? WEEKEND_SHIFTS : SHIFTS;
+              const shifts = effShifts(isRest);
+              // 晚班跨天时，不显示夜班行（通宵晚班已覆盖）
+              const eveningOvernight = isOvernight(shifts.evening.time);
+              const visibleShifts = eveningOvernight ? SHIFT_ORDER.filter(s => s !== 'night') : SHIFT_ORDER;
 
               return (
                 <>
-                  {SHIFT_ORDER.map(shift => {
+                  {visibleShifts.map(shift => {
                     const staffIds = daySchedule[shift] || [];
                     const shiftInfo = (shifts as Record<string, { time: string; hours: number }>)[shift];
                     if (!shiftInfo && staffIds.length === 0) return null;
