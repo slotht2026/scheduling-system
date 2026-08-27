@@ -159,6 +159,38 @@ export async function POST(request: NextRequest) {
     const assignedCountMap: Record<string, number> = {};
     STAFF.forEach(s => { assignedCountMap[s.id] = 0; });
 
+    // 跨月衔接：读取上月最后几天，初始化 lastNightMap / consecutiveMap，
+    // 避免「上月最后一天夜班 → 本月第一天白班」无休息的 bug。
+    // 上月日期用相对本月 day=1 的偏移表示：上月最后一天记为 0，往前依次 -1、-2……
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevDaysInMonth = new Date(prevYear, prevMonth, 0).getDate();
+    const prevStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+    const prevEnd = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevDaysInMonth).padStart(2, '0')}`;
+    const prevSchedules = await query(
+      `SELECT date::text, shift, staff_id FROM schedules WHERE date >= $1 AND date <= $2`,
+      [prevStart, prevEnd]
+    );
+    const prevDayOf = (dateText: string) => parseInt(dateText.slice(8, 10), 10); // 'YYYY-MM-DD' -> 日
+    prevSchedules.forEach(e => {
+      // night 或跨天合并模式的 evening 都算「通宵夜班」，需触发次日休息
+      if (e.shift === 'night' || e.shift === 'evening') {
+        const offset = prevDayOf(e.date) - prevDaysInMonth; // 上月最后一天=0
+        const cur = lastNightMap[e.staff_id];
+        if (cur === undefined || offset > cur) lastNightMap[e.staff_id] = offset;
+      }
+    });
+    // 连续工作天数：从上月最后一天往前数，遇空则断
+    STAFF.forEach(s => {
+      let consec = 0;
+      for (let d = prevDaysInMonth; d >= 1; d--) {
+        const ds = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (prevSchedules.some(e => e.staff_id === s.id && e.date === ds)) consec++;
+        else break;
+      }
+      if (consec > 0) consecutiveMap[s.id] = consec;
+    });
+
     const scheduleEntries: { date: string; shift: string; staffId: string }[] = [];
 
     function canWork(id: string, day: number): boolean {
