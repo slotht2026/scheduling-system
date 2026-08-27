@@ -173,10 +173,12 @@ export default function HomePage() {
   const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
   const monthSchedules = schedules.filter(e => e.date.startsWith(monthPrefix));
   const effShifts = (rest: boolean) => rest ? (shiftConfig?.WEEKEND_SHIFTS || WEEKEND_SHIFTS) : (shiftConfig?.SHIFTS || SHIFTS);
-  const stats = staffList.map(s => {
+    const stats = staffList.map(s => {
     let hours = 0;
     let total = 0;
     const shiftCounts: Record<string, number> = { day: 0, noon: 0, evening: 0, night: 0 };
+    let dayWeekday = 0;
+    let dayWeekend = 0;
     monthSchedules.forEach(e => {
       if (e.staff_id === s.id) {
         const dateStr = e.date.split('T')[0];
@@ -188,15 +190,18 @@ export default function HomePage() {
           }
           total++;
           shiftCounts[e.shift]++;
+          if (e.shift === 'day') {
+            if (rest) dayWeekend++; else dayWeekday++;
+          }
         }
       }
     });
     const noonDays = monthSchedules.filter(e => e.staff_id === s.id && e.shift === 'noon').map(e => e.date.split('T')[0]);
     const effWeekday = effShifts(false);
-    hours -= noonDays.length * (effWeekday.day?.hours || 7);
+    hours -= noonDays.length * (effWeekday.day?.  hours || 7);
     hours += noonDays.length * (effWeekday.noon?.hours || 7);
 
-    return { ...s, hours, total, day: shiftCounts.day, noon: shiftCounts.noon, evening: shiftCounts.evening, night: shiftCounts.night };
+    return { ...s, hours, total, day: shiftCounts.day, dayWeekday, dayWeekend, noon: shiftCounts.noon, evening: shiftCounts.evening, night: shiftCounts.night };
   });
 
   return (
@@ -389,7 +394,7 @@ export default function HomePage() {
                   <div className="font-bold text-sm" style={{ color: s.color }}>{s.name}</div>
                   <div className="text-2xl font-bold text-gray-800 mt-1">{s.hours}h</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    白{s.day} 午{s.noon} 晚{s.evening} 夜{s.night}
+                    白 {s.dayWeekday}+假日白{s.dayWeekend} · 午{s.noon} · 晚{s.evening} · 夜{s.night}
                   </div>
                 </div>
               ))}
