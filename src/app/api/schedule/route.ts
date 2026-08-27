@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { buildShiftConfig, isOvernight } from '@/lib/staff';
+import { buildShiftConfig, shouldSkipNight } from '@/lib/staff';
 import { loadStaff, loadRules } from '@/lib/staff-db';
 
 async function getAuth(request: NextRequest) {
@@ -136,8 +136,8 @@ export async function POST(request: NextRequest) {
     // 生效班次配置（含自动跨天合并逻辑）
     const { SHIFTS: customShifts, WEEKEND_SHIFTS: customWeekendShifts, mergeEveningNight: MERGE_EVENING_NIGHT } = buildShiftConfig(rules);
     // 按工作日/周末分别判断晚班是否跨天（自动合并夜班）
-    const WD_MERGE = isOvernight(customShifts.evening.time);
-    const WE_MERGE = isOvernight(customWeekendShifts.evening.time);
+    const WD_MERGE = shouldSkipNight(customShifts.evening);
+    const WE_MERGE = shouldSkipNight(customWeekendShifts.evening);
 
     // 每人工时统计
     const hoursMap: Record<string, number> = {};
@@ -172,10 +172,16 @@ export async function POST(request: NextRequest) {
       const dayAssigned: string[] = [];
 
       if (isWeekend) {
-        const shifts = WE_MERGE ? ['day', 'evening'] : ['day', 'evening', 'night'];
-        const hoursArr = WE_MERGE
-          ? [customWeekendShifts.day.hours, customWeekendShifts.evening.hours]
-          : [customWeekendShifts.day.hours, customWeekendShifts.evening.hours, customWeekendShifts.night.hours];
+        // 仅启用 hours>0 的班次：day 始终加入；evening/night 仅在启用时加入
+        // 跨天合并(WE_MERGE)模式下 evening 即视为夜班(不再独立排 night)
+        const enabledShifts: Array<[string, number]> = [];
+        if (customWeekendShifts.day.hours > 0) enabledShifts.push(['day', customWeekendShifts.day.hours]);
+        if (customWeekendShifts.evening.hours > 0) enabledShifts.push(['evening', customWeekendShifts.evening.hours]);
+        if (!WE_MERGE && customWeekendShifts.night.hours > 0) enabledShifts.push(['night', customWeekendShifts.night.hours]);
+
+        const shifts = enabledShifts.map(([s]) => s);
+        const hoursArr = enabledShifts.map(([_, h]) => h);
+        const limit = enabledShifts.length;
 
         const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
         const others = available.filter(s => !isLeaderStaff(s.id) && canWork(s.id, day));
@@ -183,7 +189,6 @@ export async function POST(request: NextRequest) {
         const sorted = [...leaders.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]),
                         ...others.sort((a, b) => hoursMap[a.id] - hoursMap[b.id])];
 
-        const limit = WE_MERGE ? 2 : 3;
         for (let i = 0; i < Math.min(limit, sorted.length); i++) {
           const s = sorted[i];
           scheduleEntries.push({ date: dateStr, shift: shifts[i], staffId: s.id });
@@ -229,24 +234,31 @@ export async function POST(request: NextRequest) {
           hoursMap[noonCandidate] += customShifts.noon.hours;
         }
 
-        // 晚班
-        const remaining = available.filter(s => !dayAssigned.includes(s.id) && canWork(s.id, day))
-          .sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
-
-        if (remaining.length >= 1) {
-          scheduleEntries.push({ date: dateStr, shift: 'evening', staffId: remaining[0].id });
-          hoursMap[remaining[0].id] += customShifts.evening.hours;
-          dayAssigned.push(remaining[0].id);
-          // 跨天合并模式下晚班即覆盖通宵，按夜班处理休息
-          if (WD_MERGE) lastNightMap[remaining[0].id] = day;
+        // 晚班（仅当 evening 工时>0 时）
+        if (customShifts.evening.hours > 0) {
+          const eveningPool = available.filter(s => !dayAssigned.includes(s.id) && canWork(s.id, day))
+            .sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
+          if (eveningPool.length >= 1) {
+            const s = eveningPool[0];
+            scheduleEntries.push({ date: dateStr, shift: 'evening', staffId: s.id });
+            hoursMap[s.id] += customShifts.evening.hours;
+            dayAssigned.push(s.id);
+            // 跨天合并模式下晚班即覆盖通宵，按夜班处理休息
+            if (WD_MERGE) lastNightMap[s.id] = day;
+          }
         }
 
-        // 夜班（仅在不跨天合并时排）
-        if (!WD_MERGE && remaining.length >= 2) {
-          scheduleEntries.push({ date: dateStr, shift: 'night', staffId: remaining[1].id });
-          hoursMap[remaining[1].id] += customShifts.night.hours;
-          dayAssigned.push(remaining[1].id);
-          lastNightMap[remaining[1].id] = day;
+        // 夜班（仅在不跨天合并、且 night 工时>0 时）
+        if (!WD_MERGE && customShifts.night.hours > 0) {
+          const nightPool = available.filter(s => !dayAssigned.includes(s.id) && canWork(s.id, day))
+            .sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
+          if (nightPool.length >= 1) {
+            const s = nightPool[0];
+            scheduleEntries.push({ date: dateStr, shift: 'night', staffId: s.id });
+            hoursMap[s.id] += customShifts.night.hours;
+            dayAssigned.push(s.id);
+            lastNightMap[s.id] = day;
+          }
         }
       }
 
@@ -261,16 +273,20 @@ export async function POST(request: NextRequest) {
     }
 
     // 补位：夜班未安排的用主管作为流动岗填上（跨天合并模式下晚班已覆盖通宵，无需补夜班）
+    // 仅当 night 工时>0 时才补（避免 night 被关掉时误补）
     const director = STAFF.find(s => s.isDirector) || directorFloater;
     if (director) {
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayMerge = isRestDay(dateStr) ? WE_MERGE : WD_MERGE;
         if (dayMerge) continue; // 合并模式下晚班已覆盖通宵
+        const isWeekendNow = isRestDay(dateStr);
+        const nightShiftHours = isWeekendNow ? customWeekendShifts.night.hours : customShifts.night.hours;
+        if (nightShiftHours <= 0) continue; // night 被关闭时无需补位
         const hasNight = scheduleEntries.some(e => e.date === dateStr && e.shift === 'night');
         if (!hasNight) {
           scheduleEntries.push({ date: dateStr, shift: 'night', staffId: director.id });
-          hoursMap[director.id] = (hoursMap[director.id] || 0) + customShifts.night.hours;
+          hoursMap[director.id] = (hoursMap[director.id] || 0) + nightShiftHours;
           lastNightMap[director.id] = day;
         }
       }

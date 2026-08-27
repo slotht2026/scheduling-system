@@ -56,7 +56,6 @@ export const DEFAULT_RULES: Record<string, string> = {
 };
 
 // 判断班次时段是否跨天（如 18:00-08:00、18:00-01:00）。
-// 跨天即视为「通宵班」，排班时不再单独排夜班。
 // 注意：结束时间恰好为 00:00（如 16:00-00:00）不算跨天，因为它是与夜班 00:00-08:00 无缝衔接的三班倒。
 export function isOvernight(time: string): boolean {
   const segments = time.split(',').map(s => s.trim()).filter(Boolean);
@@ -70,6 +69,13 @@ export function isOvernight(time: string): boolean {
   // 结束时间恰为 00:00 → 不算跨天（与夜班无缝衔接）
   if (lastEnd === 0) return false;
   return lastEnd < firstStart; // 结束时间早于开始时间 → 跨天
+}
+
+// 是否应跳过独立的夜班：仅当「晚班实际参与排班（工时>0）且其时段跨天」时，
+// 才认为晚班已是通宵班、不再单独排夜班。若晚班工时=0（被废掉/不排），则夜班照常排。
+export function shouldSkipNight(shift: { time: string; hours: number }): boolean {
+  if (!shift || shift.hours <= 0) return false;
+  return isOvernight(shift.time);
 }
 
 export interface ShiftConfig {
@@ -99,8 +105,8 @@ export function buildShiftConfig(rules: Record<string, string> = {}): ShiftConfi
   if (rules.weekend_night_time) customWeekendShifts.night = { ...customWeekendShifts.night, time: rules.weekend_night_time };
   if (rules.weekend_night_hours) customWeekendShifts.night = { ...customWeekendShifts.night, hours: parseInt(rules.weekend_night_hours) };
 
-  // 晚班时段跨天 → 自动合并（不再单独排夜班）
-  const merge = isOvernight(customShifts.evening.time) || isOvernight(customWeekendShifts.evening.time);
+  // 晚班实际参与排班(工时>0)且时段跨天 → 自动合并（不再单独排夜班）
+  const merge = shouldSkipNight(customShifts.evening) || shouldSkipNight(customWeekendShifts.evening);
 
   return { SHIFTS: customShifts, WEEKEND_SHIFTS: customWeekendShifts, mergeEveningNight: merge };
 }

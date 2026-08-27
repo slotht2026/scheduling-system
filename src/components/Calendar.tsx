@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { SHIFTS, WEEKEND_SHIFTS, type ShiftConfig, isOvernight } from '@/lib/staff';
+import { SHIFTS, WEEKEND_SHIFTS, type ShiftConfig, shouldSkipNight } from '@/lib/staff';
 
 interface StaffMember {
   id: string;
@@ -217,8 +217,8 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
               const dayLeaves = leaveMap[selectedDate] || [];
               const { isRest } = getRestInfo(selectedDate);
               const shifts = effShifts(isRest);
-              // 晚班跨天时，不显示夜班行（通宵晚班已覆盖）
-              const eveningOvernight = isOvernight(shifts.evening.time);
+              // 晚班实际排班且跨天时，不显示夜班行（通宵晚班已覆盖）；若晚班工时=0则正常显示夜班
+              const eveningOvernight = shouldSkipNight(shifts.evening);
               const visibleShifts = eveningOvernight ? SHIFT_ORDER.filter(s => s !== 'night') : SHIFT_ORDER;
 
               return (
@@ -226,7 +226,8 @@ export default function Calendar({ year, month, schedules, leaves, staff, isAdmi
                   {visibleShifts.map(shift => {
                     const staffIds = daySchedule[shift] || [];
                     const shiftInfo = (shifts as Record<string, { time: string; hours: number }>)[shift];
-                    if (!shiftInfo && staffIds.length === 0) return null;
+                    // 班次未启用(hours=0)或完全无信息 → 整行隐藏
+                    if (!shiftInfo || shiftInfo.hours <= 0) return null;
 
                     // 午班的人也出现在白班里，白班显示时排除午班人员
                     const noonIds = daySchedule['noon'] || [];

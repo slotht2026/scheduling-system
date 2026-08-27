@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Calendar from '@/components/Calendar';
 import GenerateButton from '@/components/GenerateButton';
 import LeaveModal from '@/components/LeaveModal';
-import { SHIFTS, WEEKEND_SHIFTS, type ShiftConfig, isOvernight } from '@/lib/staff';
+import { SHIFTS, WEEKEND_SHIFTS, type ShiftConfig, shouldSkipNight } from '@/lib/staff';
 
 interface StaffMember {
   id: string;
@@ -208,8 +208,8 @@ export default function HomePage() {
         {(() => {
           const wd = shiftConfig?.SHIFTS || SHIFTS;
           const we = shiftConfig?.WEEKEND_SHIFTS || WEEKEND_SHIFTS;
-          const wdOvernight = isOvernight(wd.evening.time);
-          const weOvernight = isOvernight(we.evening.time);
+          const wdOvernight = shouldSkipNight(wd.evening);
+          const weOvernight = shouldSkipNight(we.evening);
           return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className="bg-green-50 border border-green-200 rounded-xl p-5">
@@ -223,7 +223,7 @@ export default function HomePage() {
                   <span className="w-3 h-3 rounded bg-orange-400 inline-block"></span>
                   <span><b>白加午</b> {wd.noon.time}连续（{wd.noon.hours}h，白班选1人，全天在岗）</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" style={{ display: 'none'  }}>
                   <span className="w-3 h-3 rounded bg-blue-500 inline-block"></span>
                   <span><b>晚班</b> {wd.evening.time}（{wd.evening.hours}h）</span>
                 </div>
@@ -233,7 +233,7 @@ export default function HomePage() {
                   <span><b>夜班</b> {wd.night.time}（{wd.night.hours}h）</span>
                 </div>
                 )}
-                <div className="text-green-700 mt-2 text-xs">白班≥3人 + 白加午1人 + 晚班1人{!wdOvernight ? ' + 夜班1人' : ''}</div>
+                <div className="text-green-700 mt-2 text-xs">白班≥2人 + 白加午1人 + 夜班1人 </div>
               </div>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
@@ -243,7 +243,7 @@ export default function HomePage() {
                   <span className="w-3 h-3 rounded bg-green-500 inline-block"></span>
                   <span><b>白班</b> {we.day.time}（{we.day.hours}h，1人）</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" style={{ display: 'none'  }}>
                   <span className="w-3 h-3 rounded bg-blue-500 inline-block"></span>
                   <span><b>晚班</b> {we.evening.time}（{we.evening.hours}h，1人）</span>
                 </div>
@@ -253,7 +253,7 @@ export default function HomePage() {
                   <span><b>夜班</b> {we.night.time}（{we.night.hours}h，1人）</span>
                 </div>
                 )}
-                <div className="text-blue-700 mt-2 text-xs">门诊不开，每班1人，三班覆盖24h</div>
+                <div className="text-blue-700 mt-2 text-xs">门诊不开，每班1人，两班覆盖24h</div>
               </div>
             </div>
           </div>
