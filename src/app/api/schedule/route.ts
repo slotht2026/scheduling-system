@@ -151,6 +151,14 @@ export async function POST(request: NextRequest) {
     const lastNightMap: Record<string, number> = {};
     STAFF.forEach(s => { lastNightMap[s.id] = -99; });
 
+    // 每人夜班次数（用于均匀分配夜班，避免夜班扎堆给工时垫底的某几人）
+    const nightCountMap: Record<string, number> = {};
+    STAFF.forEach(s => { nightCountMap[s.id] = 0; });
+
+    // 每人本月已分配班次总数（最终 tiebreaker，确保 hoursMap 相等时真正轮转，避免组员垄断）
+    const assignedCountMap: Record<string, number> = {};
+    STAFF.forEach(s => { assignedCountMap[s.id] = 0; });
+
     const scheduleEntries: { date: string; shift: string; staffId: string }[] = [];
 
     function canWork(id: string, day: number): boolean {
@@ -162,6 +170,13 @@ export async function POST(request: NextRequest) {
     function isLeaderStaff(id: string): boolean {
       const s = STAFF.find(x => x.id === id);
       return !!(s?.isDirector || s?.isLeader);
+    }
+
+    // 按夜班数升序(均匀分夜班) → 已分配次数升序(轮转) → 工时升序(贪心)
+    function sortByNightBalance(a: typeof STAFF[number], b: typeof STAFF[number]): number {
+      return nightCountMap[a.id] - nightCountMap[b.id]
+        || assignedCountMap[a.id] - assignedCountMap[b.id]
+        || hoursMap[a.id] - hoursMap[b.id];
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -183,38 +198,41 @@ export async function POST(request: NextRequest) {
         const hoursArr = enabledShifts.map(([_, h]) => h);
         const limit = enabledShifts.length;
 
-        const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
-        const others = available.filter(s => !isLeaderStaff(s.id) && canWork(s.id, day));
-
-        const sorted = [...leaders.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]),
-                        ...others.sort((a, b) => hoursMap[a.id] - hoursMap[b.id])];
+        // 合并 leader/others 池，统一按 (夜班数升, 已分配次数升, 工时升) 贪心；
+        // 原先 leader 排在最前的逻辑会导致 13 个节假日陈能隆独霸 12+ 个白班，
+        // 工时比其他人高出几十小时。
+        const sorted = available
+          .filter(s => canWork(s.id, day))
+          .sort(sortByNightBalance);
 
         for (let i = 0; i < Math.min(limit, sorted.length); i++) {
           const s = sorted[i];
           scheduleEntries.push({ date: dateStr, shift: shifts[i], staffId: s.id });
           hoursMap[s.id] += hoursArr[i];
           dayAssigned.push(s.id);
+          assignedCountMap[s.id]++;
           // 合并（跨天）模式下 evening 即覆盖通宵，按夜班处理休息
-          if (shifts[i] === 'night' || (WE_MERGE && shifts[i] === 'evening')) lastNightMap[s.id] = day;
+          if (shifts[i] === 'night' || (WE_MERGE && shifts[i] === 'evening')) {
+            lastNightMap[s.id] = day;
+            nightCountMap[s.id]++;
+          }
         }
       } else {
-        const leaders = available.filter(s => isLeaderStaff(s.id) && canWork(s.id, day));
-        const others = available.filter(s => !isLeaderStaff(s.id) && canWork(s.id, day));
+        // 工作日白班：leader 与 others 合池，统一按 (工时升 + 已分配班次数升) 贪心
+        // 解决 "leader 工作日白班=0" 与 "排序稳定时一人垄断" 的公平性 bug
+        const sortedAll = available.filter(s => canWork(s.id, day))
+          .sort((a, b) =>
+            hoursMap[a.id] - hoursMap[b.id]
+            || assignedCountMap[a.id] - assignedCountMap[b.id]);
 
-        // 白班
         const dayStaff: string[] = [];
-        const sortedLeaders = leaders.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
-
-        if (REQUIRE_LEADER && sortedLeaders.length > 0) {
-          dayStaff.push(sortedLeaders[0].id);
+        // REQUIRE_LEADER=true 时额外强制 1 个 leader 入场（防止极端贪心完全排掉 leader）
+        if (REQUIRE_LEADER) {
+          const leaderPick = sortedAll.find(s => isLeaderStaff(s.id));
+          if (leaderPick) dayStaff.push(leaderPick.id);
         }
-
-        const sortedOthers = others.sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
-        for (const s of sortedOthers) {
-          if (dayStaff.length >= MIN_WEEKDAY_STAFF) break;
-          if (!dayStaff.includes(s.id)) dayStaff.push(s.id);
-        }
-        for (const s of sortedLeaders) {
+        // 填满工作日白班最低人数 (leader/others 合池贪心)
+        for (const s of sortedAll) {
           if (dayStaff.length >= MIN_WEEKDAY_STAFF) break;
           if (!dayStaff.includes(s.id)) dayStaff.push(s.id);
         }
@@ -223,26 +241,30 @@ export async function POST(request: NextRequest) {
           scheduleEntries.push({ date: dateStr, shift: 'day', staffId: id });
           hoursMap[id] += customShifts.day.hours;
           dayAssigned.push(id);
+          assignedCountMap[id]++;
         }
 
-        // 白加午（从白班3人中选1人全天在岗）
+        // 白加午（从白班3人中选1人全天在岗）- 按工时少、班次少优先轮转
         if (dayStaff.length > 1) {
-          const noonCandidate = dayStaff.sort((a, b) => hoursMap[a] - hoursMap[b])[0];
+          const noonCandidate = dayStaff.sort((a, b) =>
+            hoursMap[a] - hoursMap[b] || assignedCountMap[a] - assignedCountMap[b])[0];
           scheduleEntries.push({ date: dateStr, shift: 'noon', staffId: noonCandidate });
           // 白加午按 noon 工时(10h)计算，而非普通白班工时(7h)
           hoursMap[noonCandidate] -= customShifts.day.hours;
           hoursMap[noonCandidate] += customShifts.noon.hours;
+          assignedCountMap[noonCandidate]++;
         }
 
         // 晚班（仅当 evening 工时>0 时）
         if (customShifts.evening.hours > 0) {
           const eveningPool = available.filter(s => !dayAssigned.includes(s.id) && canWork(s.id, day))
-            .sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
+            .sort((a, b) => hoursMap[a.id] - hoursMap[b.id] || assignedCountMap[a.id] - assignedCountMap[b.id]);
           if (eveningPool.length >= 1) {
             const s = eveningPool[0];
             scheduleEntries.push({ date: dateStr, shift: 'evening', staffId: s.id });
             hoursMap[s.id] += customShifts.evening.hours;
             dayAssigned.push(s.id);
+            assignedCountMap[s.id]++;
             // 跨天合并模式下晚班即覆盖通宵，按夜班处理休息
             if (WD_MERGE) lastNightMap[s.id] = day;
           }
@@ -251,11 +273,16 @@ export async function POST(request: NextRequest) {
         // 夜班（仅在不跨天合并、且 night 工时>0 时）
         if (!WD_MERGE && customShifts.night.hours > 0) {
           const nightPool = available.filter(s => !dayAssigned.includes(s.id) && canWork(s.id, day))
-            .sort((a, b) => hoursMap[a.id] - hoursMap[b.id]);
+            // 先按夜班次数升序(均匀分配)，再按已分配班次升序(轮转)，最后工时升序
+            .sort((a, b) => nightCountMap[a.id] - nightCountMap[b.id]
+                          || assignedCountMap[a.id] - assignedCountMap[b.id]
+                          || hoursMap[a.id] - hoursMap[b.id]);
           if (nightPool.length >= 1) {
             const s = nightPool[0];
             scheduleEntries.push({ date: dateStr, shift: 'night', staffId: s.id });
             hoursMap[s.id] += customShifts.night.hours;
+            nightCountMap[s.id]++;
+            assignedCountMap[s.id]++;
             dayAssigned.push(s.id);
             lastNightMap[s.id] = day;
           }
@@ -288,6 +315,8 @@ export async function POST(request: NextRequest) {
           scheduleEntries.push({ date: dateStr, shift: 'night', staffId: director.id });
           hoursMap[director.id] = (hoursMap[director.id] || 0) + nightShiftHours;
           lastNightMap[director.id] = day;
+          nightCountMap[director.id] = (nightCountMap[director.id] || 0) + 1;
+          assignedCountMap[director.id] = (assignedCountMap[director.id] || 0) + 1;
         }
       }
     }
